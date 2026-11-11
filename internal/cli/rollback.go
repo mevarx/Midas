@@ -106,7 +106,8 @@ func (c *Ctx) cmdRollback(args []string) error {
 
 		rep, rerr := mover.Rollback(mover.RollbackOptions{
 			App: def.ID, Target: t.Name, Vault: vault,
-			Source: t.Source, Dest: t.Dest,
+			Context: c.Context,
+			Source:  t.Source, Dest: t.Dest,
 			BackupSet: set, Manifest: m,
 			Force: *force, DryRun: c.G.DryRun, Prefer: *source,
 			Warn: func(f string, a ...any) { c.UI.Warnf(f, a...) },

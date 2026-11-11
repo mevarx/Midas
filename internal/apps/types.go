@@ -154,6 +154,8 @@ func (d *Definition) Validate() []error {
 	for i, t := range d.Targets {
 		if strings.TrimSpace(t.Name) == "" {
 			add("target #%d has no name", i+1)
+		} else if !validTargetName(t.Name) {
+			add("target %q has an unsafe path component", t.Name)
 		} else if seen[t.Name] {
 			add("duplicate target name %q", t.Name)
 		}
@@ -169,6 +171,18 @@ func (d *Definition) Validate() []error {
 		d.Process.CmdlineContains = []string{}
 	}
 	return errs
+}
+
+func validTargetName(name string) bool {
+	if name == "." || name == ".." || name == "" {
+		return false
+	}
+	for _, r := range name {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.') {
+			return false
+		}
+	}
+	return true
 }
 
 func validID(id string) bool {

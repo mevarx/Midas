@@ -91,6 +91,10 @@ func (m *Manager) Create(opts CreateOptions, rp manifest.RestorePoint) (*Set, er
 	}
 
 	id := m.NewID(opts.App)
+	operationID, err := newOperationID()
+	if err != nil {
+		return nil, fmt.Errorf("create backup operation ID: %w", err)
+	}
 	dir := m.SetDir(opts.App, id)
 	if err := os.MkdirAll(filepath.Join(dir, "files"), 0o700); err != nil {
 		return nil, err
@@ -98,6 +102,7 @@ func (m *Manager) Create(opts CreateOptions, rp manifest.RestorePoint) (*Set, er
 	s := &Set{
 		Schema:       SchemaVersion,
 		ID:           id,
+		OperationID:  operationID,
 		App:          opts.App,
 		Target:       opts.Target,
 		OriginalPath: src,
@@ -292,7 +297,33 @@ func copyFile(src, dst string, fi os.FileInfo) (File, int64, error) {
 }
 
 func verifySet(s *Set, hash bool) error {
+	if err := s.Validate(); err != nil {
+		return err
+	}
 	var problems []string
+	expected := make(map[string]bool, len(s.Files))
+	for _, f := range s.Files {
+		expected[f.Path] = true
+	}
+	walkErr := filepath.WalkDir(s.FilesDir(), func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return fmt.Errorf("inspect backup path %q: %w", p, err)
+		}
+		if p == s.FilesDir() || d.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(s.FilesDir(), p)
+		if err != nil {
+			return err
+		}
+		if !expected[filepath.ToSlash(rel)] {
+			problems = append(problems, filepath.ToSlash(rel)+": unexpected entry")
+		}
+		return nil
+	})
+	if walkErr != nil {
+		problems = append(problems, walkErr.Error())
+	}
 	for _, f := range s.Files {
 		p := filepath.Join(s.FilesDir(), f.Path)
 		if f.Link != "" {

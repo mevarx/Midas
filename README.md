@@ -83,13 +83,14 @@ Or download a release binary for windows/linux/darwin (amd64 or arm64). No admin
 | `midas init` | Set the vault and backup directory; write config |
 | `midas list` | Apps, targets, sizes, moved/not-moved state |
 | `midas move <app>` | Move targets into the vault and create links |
+| `midas resume <app>` | Safely restart an owned, interrupted copy checkpoint |
 | `midas run <app> -- <cmd>` | Launch with temp redirected to the vault |
 | `midas status` | Live link/vault health; `--json` for scripts |
 | `midas restore <app>` | Move data back after a successful move |
 | `midas rollback <app>` | Undo a failed or interrupted move |
 | `midas backup list/show/verify/delete` | Manage backup sets |
 | `midas apps list/show/validate/path` | Inspect app definitions |
-| `midas doctor` | Detect broken links, stale locks, partial copies |
+| `midas doctor` | Read-only health and recovery report; `--repair` is explicit |
 | `midas shim <app>` | Wrapper that auto-applies `run` |
 
 Global flags: `--vault`, `--config`, `--dry-run`, `--yes`, `--json`, `--verbose`.
@@ -141,6 +142,8 @@ midas apps validate ./my-app.toml
 
 - [docs/DECISIONS.md](docs/DECISIONS.md) — implementation choices
 - [docs/SAFETY.md](docs/SAFETY.md) — what is guaranteed and manual recovery
+- [docs/RECOVERY.md](docs/RECOVERY.md) — diagnosis, resume eligibility and recovery steps
+- [docs/PLATFORMS.md](docs/PLATFORMS.md) — native CI coverage and platform limitations
 - [docs/ADDING_AN_APP.md](docs/ADDING_AN_APP.md) — definition format
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 

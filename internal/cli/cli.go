@@ -2,6 +2,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -41,10 +42,11 @@ type Global struct {
 
 // Ctx carries everything a command needs.
 type Ctx struct {
-	G    Global
-	Cfg  *config.Config
-	UI   *ui.UI
-	logF *os.File
+	G       Global
+	Context context.Context
+	Cfg     *config.Config
+	UI      *ui.UI
+	logF    *os.File
 }
 
 // codedError carries an exit code.
@@ -70,6 +72,11 @@ func failf(code int, format string, a ...any) error {
 
 // Run executes the CLI and returns the process exit code.
 func Run(args []string) int {
+	return RunContext(args, context.Background())
+}
+
+// RunContext executes the CLI with cancellation tied to the calling process.
+func RunContext(args []string, runContext context.Context) int {
 	g, rest, err := parseGlobal(args)
 	u := ui.New()
 	u.JSON = g.JSON
@@ -84,7 +91,7 @@ func Run(args []string) int {
 		u.Errorf("%v", err)
 		return ExitGeneral
 	}
-	ctx := &Ctx{G: g, Cfg: cfg, UI: u}
+	ctx := &Ctx{G: g, Context: runContext, Cfg: cfg, UI: u}
 	defer ctx.closeLog()
 
 	if len(rest) == 0 {
@@ -111,6 +118,8 @@ func Run(args []string) int {
 		err = ctx.cmdList(cmdArgs)
 	case "move":
 		err = ctx.cmdMove(cmdArgs)
+	case "resume":
+		err = ctx.cmdResume(cmdArgs)
 	case "run":
 		return ctx.cmdRun(cmdArgs) // run returns the child's exit code
 	case "status":
@@ -309,7 +318,7 @@ func (c *Ctx) closeLog() {
 }
 
 func shortUsage() string {
-	return "usage: midas <command> [flags]\ncommands: init, list, move, run, status, restore, rollback, backup, apps, doctor, shim"
+	return "usage: midas <command> [flags]\ncommands: init, list, move, resume, run, status, restore, rollback, backup, apps, doctor, shim"
 }
 
 func printHelp(u *ui.UI) {
@@ -322,13 +331,14 @@ Commands:
   init                     set the vault and backup directory
   list                     show known apps, targets, sizes and state
   move <app>               move an app's folders into the vault and link them
+  resume <app>             safely restart a validated interrupted copy
   run <app> -- <cmd...>    launch a command with temp redirected to the vault
   status                   check every moved target, link and disk space
   restore <app>            move an app's data back to its original location
   rollback <app>           undo a move from the best available source
   backup <list|show|verify|delete>   manage backup sets
   apps <list|show|validate|path>     inspect app definitions
-  doctor                   find and offer to repair problems
+  doctor                   read-only health report; --repair is explicit
   shim <app>               create a wrapper that applies run automatically
   version                  print the version
 

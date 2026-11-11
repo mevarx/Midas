@@ -3,12 +3,16 @@
 package backup
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/midas-cli/midas/internal/manifest"
@@ -55,6 +59,7 @@ type Skipped struct {
 type Set struct {
 	Schema       int                   `json:"schema"`
 	ID           string                `json:"id"`
+	OperationID  string                `json:"operation_id,omitempty"`
 	App          string                `json:"app"`
 	Target       string                `json:"target"`
 	OriginalPath string                `json:"original_path"`
@@ -125,6 +130,16 @@ func (s *Set) Save() error {
 	if s.Dir == "" {
 		return errors.New("backup set has no directory")
 	}
+	if s.OperationID == "" {
+		id, err := newOperationID()
+		if err != nil {
+			return err
+		}
+		s.OperationID = id
+	}
+	if err := s.Validate(); err != nil {
+		return err
+	}
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err
@@ -135,7 +150,22 @@ func (s *Set) Save() error {
 
 // LoadSet reads a set from its directory.
 func LoadSet(dir string) (*Set, error) {
-	data, err := os.ReadFile(filepath.Join(dir, "BACKUP.json"))
+	dirInfo, err := os.Lstat(dir)
+	if err != nil {
+		return nil, err
+	}
+	if !dirInfo.IsDir() || dirInfo.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("backup set path %q is not a real directory", dir)
+	}
+	path := filepath.Join(dir, "BACKUP.json")
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("backup metadata %q is not a regular file", path)
+	}
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +174,78 @@ func LoadSet(dir string) (*Set, error) {
 		return nil, fmt.Errorf("corrupt BACKUP.json in %s: %w", dir, err)
 	}
 	s.Dir = dir
+	if err := s.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid BACKUP.json in %s: %w", dir, err)
+	}
 	return &s, nil
+}
+
+// Validate checks metadata before paths from BACKUP.json are joined to disk.
+func (s *Set) Validate() error {
+	if s.Schema != SchemaVersion || !validMetadataComponent(s.ID) || !validMetadataComponent(s.App) || !validMetadataComponent(s.Target) {
+		return errors.New("invalid backup schema or identity")
+	}
+	if s.Dir != "" && filepath.Base(filepath.Clean(s.Dir)) != s.ID {
+		return errors.New("backup ID does not match its directory")
+	}
+	if s.Dir != "" && filepath.Base(filepath.Dir(filepath.Clean(s.Dir))) != s.App {
+		return errors.New("backup app does not match its directory")
+	}
+	if s.OperationID != "" && !validOperationID(s.OperationID) {
+		return errors.New("invalid backup operation ID")
+	}
+	seen := make(map[string]bool, len(s.Files))
+	seenFolded := make(map[string]bool, len(s.Files))
+	for _, f := range s.Files {
+		folded := strings.ToLower(f.Path)
+		if !validBackupRelativePath(f.Path) || f.Size < 0 || seen[f.Path] || seenFolded[folded] {
+			return fmt.Errorf("invalid or duplicate backup file path %q", f.Path)
+		}
+		seen[f.Path] = true
+		seenFolded[folded] = true
+	}
+	for _, f := range s.Skipped {
+		if !validBackupRelativePath(f.Path) || f.Size < 0 {
+			return fmt.Errorf("invalid skipped-file path %q", f.Path)
+		}
+	}
+	return nil
+}
+
+func validBackupRelativePath(value string) bool {
+	if value == "" || strings.ContainsAny(value, "\\:\x00") || path.IsAbs(value) {
+		return false
+	}
+	clean := path.Clean(value)
+	return clean == value && clean != "." && clean != ".." && !strings.HasPrefix(clean, "../")
+}
+
+func validMetadataComponent(value string) bool {
+	if value == "" || value == "." || value == ".." {
+		return false
+	}
+	for _, r := range value {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.') {
+			return false
+		}
+	}
+	return true
+}
+
+func validOperationID(value string) bool {
+	if len(value) != 35 || !strings.HasPrefix(value, "op-") {
+		return false
+	}
+	_, err := hex.DecodeString(value[3:])
+	return err == nil
+}
+
+func newOperationID() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return "op-" + hex.EncodeToString(b), nil
 }
 
 // List returns sets under the manager root, newest first.
@@ -218,7 +319,15 @@ func (m *Manager) NewID(app string) string {
 
 // Close loads the LOCK, if present.
 func (s *Set) Lock() (*LockFile, error) {
-	data, err := os.ReadFile(s.LockPath())
+	path := s.LockPath()
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("backup lock %q is not a regular file", path)
+	}
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/midas-cli/midas/internal/version"
@@ -38,6 +39,7 @@ type BackupInfo struct {
 type Entry struct {
 	App          string     `json:"app"`
 	Target       string     `json:"target"`
+	OperationID  string     `json:"operation_id,omitempty"`
 	OriginalPath string     `json:"original_path"`
 	VaultPath    string     `json:"vault_path"`
 	LinkType     string     `json:"link_type"`
@@ -67,7 +69,23 @@ func Path(vault string) string {
 
 // Load reads the manifest; a missing file yields an empty manifest.
 func Load(vault string) (*Manifest, error) {
-	data, err := os.ReadFile(Path(vault))
+	meta := filepath.Join(vault, ".midas")
+	if fi, err := os.Lstat(meta); err == nil {
+		if !fi.IsDir() || fi.Mode()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("manifest directory %q is not a real directory", meta)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	path := Path(vault)
+	if fi, err := os.Lstat(path); err == nil {
+		if !fi.Mode().IsRegular() {
+			return nil, fmt.Errorf("manifest %q is not a regular file", path)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return Empty(), nil
@@ -76,7 +94,7 @@ func Load(vault string) (*Manifest, error) {
 	}
 	var m Manifest
 	if err := json.Unmarshal(data, &m); err != nil {
-		return nil, fmt.Errorf("manifest is corrupt (%s): %w; run `midas doctor`", Path(vault), err)
+		return nil, fmt.Errorf("manifest is corrupt (%s): %w; run `midas doctor`", path, err)
 	}
 	if m.Schema == 0 {
 		m.Schema = SchemaVersion
@@ -84,18 +102,37 @@ func Load(vault string) (*Manifest, error) {
 	if m.Entries == nil {
 		m.Entries = []Entry{}
 	}
+	if err := m.validate(vault); err != nil {
+		return nil, fmt.Errorf("manifest contains unsafe metadata: %w; preserve it and run `midas doctor`", err)
+	}
 	return &m, nil
 }
 
 // Save writes the manifest atomically and keeps the previous file as .bak.
 func (m *Manifest) Save(vault string) error {
 	p := Path(vault)
-	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+	meta := filepath.Dir(p)
+	if fi, err := os.Lstat(meta); err == nil {
+		if !fi.IsDir() || fi.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("manifest directory %q is not a real directory", meta)
+		}
+	} else if errors.Is(err, os.ErrNotExist) {
+		if err := os.MkdirAll(meta, 0o700); err != nil {
+			return err
+		}
+	} else {
 		return err
+	}
+	metaInfo, err := os.Lstat(meta)
+	if err != nil || !metaInfo.IsDir() || metaInfo.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("manifest directory %q is not a real directory", meta)
 	}
 	m.Schema = SchemaVersion
 	if m.MidasVersion == "" {
 		m.MidasVersion = version.Version
+	}
+	if err := m.validate(vault); err != nil {
+		return fmt.Errorf("refusing to save unsafe manifest: %w", err)
 	}
 	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
@@ -122,7 +159,10 @@ func (m *Manifest) Save(vault string) error {
 	}
 	_ = os.Chmod(tmpName, 0o600)
 
-	if _, err := os.Stat(p); err == nil {
+	if fi, err := os.Lstat(p); err == nil {
+		if !fi.Mode().IsRegular() {
+			return fmt.Errorf("manifest %q is not a regular file", p)
+		}
 		_ = os.Remove(p + ".bak")
 		if err := os.Rename(p, p+".bak"); err != nil {
 			return fmt.Errorf("preserve previous manifest: %w", err)
@@ -132,6 +172,76 @@ func (m *Manifest) Save(vault string) error {
 		return err
 	}
 	return nil
+}
+
+func (m *Manifest) validate(vault string) error {
+	if m.Schema != SchemaVersion {
+		return fmt.Errorf("unsupported schema %d", m.Schema)
+	}
+	seen := make(map[string]bool, len(m.Entries))
+	root, err := filepath.Abs(filepath.Clean(vault))
+	if err != nil {
+		return err
+	}
+	for _, e := range m.Entries {
+		if !safeComponent(e.App) || !safeComponent(e.Target) {
+			return fmt.Errorf("invalid app/target identity %q/%q", e.App, e.Target)
+		}
+		key := e.App + "/" + e.Target
+		if seen[key] {
+			return fmt.Errorf("duplicate entry %s", key)
+		}
+		seen[key] = true
+		if e.OperationID != "" && !validOperationID(e.OperationID) {
+			return fmt.Errorf("entry %s has an invalid operation ID", key)
+		}
+		if !filepath.IsAbs(e.OriginalPath) || filepath.Clean(e.OriginalPath) != e.OriginalPath || !filepath.IsAbs(e.VaultPath) {
+			return fmt.Errorf("entry %s has a non-absolute or non-normalized path", key)
+		}
+		expected := filepath.Join(root, "apps", e.App, e.Target)
+		actual, err := filepath.Abs(filepath.Clean(e.VaultPath))
+		if err != nil || actual != expected {
+			return fmt.Errorf("entry %s destination is outside its expected vault path", key)
+		}
+		for _, dir := range []string{filepath.Join(root, "apps"), filepath.Join(root, "apps", e.App)} {
+			fi, err := os.Lstat(dir)
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			if err != nil || !fi.IsDir() || fi.Mode()&os.ModeSymlink != 0 {
+				return fmt.Errorf("entry %s has a vault directory that is not a real directory", key)
+			}
+		}
+		rel, err := filepath.Rel(root, e.OriginalPath)
+		if err != nil || rel == "." || rel != ".." && !filepath.IsAbs(rel) && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return fmt.Errorf("entry %s original path overlaps the vault", key)
+		}
+	}
+	return nil
+}
+
+func validOperationID(value string) bool {
+	if len(value) != 35 || !strings.HasPrefix(value, "op-") {
+		return false
+	}
+	for _, r := range value[3:] {
+		if !(r >= '0' && r <= '9' || r >= 'a' && r <= 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+func safeComponent(value string) bool {
+	if value == "" || value == "." || value == ".." {
+		return false
+	}
+	for _, r := range value {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.') {
+			return false
+		}
+	}
+	return true
 }
 
 // Find returns the entry for an app/target pair.

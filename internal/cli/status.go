@@ -3,6 +3,7 @@ package cli
 import (
 	"flag"
 
+	"github.com/midas-cli/midas/internal/backup"
 	"github.com/midas-cli/midas/internal/manifest"
 	"github.com/midas-cli/midas/internal/mover"
 	"github.com/midas-cli/midas/internal/platform"
@@ -20,10 +21,12 @@ type statusEntry struct {
 }
 
 type statusReport struct {
-	VaultFree uint64        `json:"vault_free_bytes"`
-	Entries   []statusEntry `json:"entries"`
-	Journals  int           `json:"in_progress_journals"`
-	Healthy   bool          `json:"healthy"`
+	VaultFree       uint64              `json:"vault_free_bytes"`
+	Entries         []statusEntry       `json:"entries"`
+	Journals        int                 `json:"in_progress_journals"`
+	Operations      []RecoveryOperation `json:"operations"`
+	CorruptJournals []string            `json:"corrupt_journals"`
+	Healthy         bool                `json:"healthy"`
 }
 
 func (c *Ctx) cmdStatus(args []string) error {
@@ -40,13 +43,11 @@ func (c *Ctx) cmdStatus(args []string) error {
 	if err != nil {
 		return err
 	}
-	c.sweepRetention(vault)
-
 	m, err := manifest.Load(vault)
 	if err != nil {
 		return failf(ExitUnhealthy, "%v", err)
 	}
-	rep := statusReport{Healthy: true}
+	rep := statusReport{Healthy: true, Entries: []statusEntry{}, Operations: []RecoveryOperation{}, CorruptJournals: []string{}}
 	if free, ferr := platform.Current().FreeSpace(vault); ferr == nil {
 		rep.VaultFree = free
 	}
@@ -61,8 +62,23 @@ func (c *Ctx) cmdStatus(args []string) error {
 		}
 		rep.Entries = append(rep.Entries, se)
 	}
-	journals, _ := mover.ListJournals(vault)
-	rep.Journals = len(journals)
+	journals, corrupt, scanErr := mover.ScanJournals(vault)
+	rep.CorruptJournals = corrupt
+	if scanErr != nil || len(corrupt) > 0 {
+		rep.Healthy = false
+	}
+	sets, _ := c.backupManager(vault).List("")
+	backupSets := make(map[string]*backup.Set, len(sets))
+	for _, set := range sets {
+		backupSets[set.ID] = set
+	}
+	for _, j := range journals {
+		if j.State != mover.StateDone && j.State != mover.StateRolledBack {
+			rep.Journals++
+			rep.Healthy = false
+			rep.Operations = append(rep.Operations, recoveryOperation(vault, j, m, backupSets, false))
+		}
+	}
 
 	if c.G.JSON {
 		if err := c.UI.PrintJSON(rep); err != nil {
@@ -86,7 +102,13 @@ func (c *Ctx) cmdStatus(args []string) error {
 			c.UI.Infof("vault free space: %s", ui.FormatBytes(rep.VaultFree))
 		}
 		if rep.Journals > 0 {
-			c.UI.Warnf("%d in-progress move journal(s) found; run `midas doctor`", rep.Journals)
+			c.UI.Warnf("%d interrupted operation(s) found; review `midas doctor --json` before `midas resume` or `midas rollback`", rep.Journals)
+			for _, op := range rep.Operations {
+				c.UI.Infof("  %s %s/%s: %s (operation %s)", op.Type, op.App, op.Target, op.JournalState, op.OperationID)
+			}
+		}
+		if len(rep.CorruptJournals) > 0 {
+			c.UI.Warnf("%d corrupt journal file(s) were preserved; run `midas doctor`", len(rep.CorruptJournals))
 		}
 	}
 	if !rep.Healthy {

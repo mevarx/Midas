@@ -93,7 +93,8 @@ func (c *Ctx) cmdRestore(args []string) error {
 	for _, e := range selected {
 		perr := mover.Restore(mover.RestoreOptions{
 			App: e.App, Target: e.Target,
-			Source: e.OriginalPath, Dest: e.VaultPath, Vault: vault,
+			Context: c.Context,
+			Source:  e.OriginalPath, Dest: e.VaultPath, Vault: vault,
 			KeepVaultCopy: *keepVault,
 			Verify:        c.Cfg.Verify,
 			Force:         *force,

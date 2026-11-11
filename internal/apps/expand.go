@@ -1,6 +1,7 @@
 package apps
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -66,7 +67,40 @@ func ValidateTargetPath(p, home, vault string) error {
 	if !isUnder(p, home) {
 		return fmt.Errorf("path %q is outside the user's home directory (%s)", p, home)
 	}
+	if err := validateResolvedContainment(p, home); err != nil {
+		return err
+	}
 	return nil
+}
+
+func validateResolvedContainment(path, home string) error {
+	realHome, err := filepath.EvalSymlinks(home)
+	if err != nil {
+		return fmt.Errorf("resolve home directory %q: %w", home, err)
+	}
+	current := filepath.Clean(path)
+	var suffix []string
+	for {
+		resolved, resolveErr := filepath.EvalSymlinks(current)
+		if resolveErr == nil {
+			for i := len(suffix) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, suffix[i])
+			}
+			if !isUnder(resolved, realHome) {
+				return fmt.Errorf("path %q resolves outside the user's home directory", path)
+			}
+			return nil
+		}
+		if !errors.Is(resolveErr, os.ErrNotExist) {
+			return fmt.Errorf("resolve target path %q: %w", current, resolveErr)
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return fmt.Errorf("cannot resolve a safe parent for %q", path)
+		}
+		suffix = append(suffix, filepath.Base(current))
+		current = parent
+	}
 }
 
 func checkDangerous(p, home, vault string) error {

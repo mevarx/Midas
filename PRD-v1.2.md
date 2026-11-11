@@ -460,11 +460,11 @@ Steps:
 | 11 | Delete `<original>.midas-bak` | If this fails, warn and leave it; `doctor` can clean up |
 | 12 | Journal: `state=done` (then delete journal); backup state becomes `complete`; release `LOCK`; apply the retention policy (Section 9.2.3) | |
 
-**Failure policy:** any failure, error, or interruption (including Ctrl+C) at steps 1 to 11 triggers automatic rollback (Section 9.2.4). If automatic rollback itself fails, Midas stops, changes nothing further, and prints the exact locations of the original, the vault copy, and the backup set together with manual recovery steps.
+**Failure policy:** operational failures attempt automatic rollback (Section 9.2.4). Ctrl+C or a supported termination during a copy preserves the source, operation-owned partial, backup, and journal for validated resume or rollback; Midas does not mark a canceled migration complete.
 
 ### 9.4 Resume
 
-On start, if a journal exists for the app and target, show its state and offer to resume or roll back. Copy resumption compares existing files in the partial directory by size and modification time and skips matches.
+If a journal exists, inspect it with `midas doctor` before acting. `midas resume <app>` is limited to validated `copying` or `verifying` checkpoints with a matching operation-owned partial path, unchanged source metadata, safe destination, and a verified backup (or an explicitly recorded no-backup choice). It restarts that copy from the source rather than trusting partially copied files. Ambiguous or later states require review and rollback; unknown partial directories are preserved.
 
 ### 9.5 Restore (planned undo of a completed move)
 
