@@ -172,8 +172,11 @@ func (windowsPlatform) ReadLink(path string) (string, bool, error) {
 		}
 		return t, true, nil
 	}
-	// Directory reparse point (junction).
-	if fi.IsDir() {
+	// Mount-point reparse point (directory junction). Go 1.23+ reports
+	// junctions as irregular files (`os.ModeIrregular`, not a directory),
+	// so this must not be gated on IsDir. A reparse query on a regular
+	// file or directory just answers "not a reparse point".
+	if fi.Mode().IsRegular() || fi.IsDir() || fi.Mode()&os.ModeIrregular != 0 {
 		t, ok, err := readMountPoint(path)
 		if err != nil || !ok {
 			return "", ok, err
@@ -191,7 +194,7 @@ func readMountPoint(path string) (string, bool, error) {
 	h, _, errno := procCreateFileW.Call(
 		uintptr(unsafe.Pointer(p)),
 		genericRead,
-		0,
+		uintptr(syscall.FILE_SHARE_READ|syscall.FILE_SHARE_WRITE|syscall.FILE_SHARE_DELETE),
 		0,
 		openExisting,
 		fileFlagBackupSemantics|fileFlagOpenReparsePoint,
@@ -207,8 +210,8 @@ func readMountPoint(path string) (string, bool, error) {
 	r, _, errno := procDeviceIoControl.Call(
 		h,
 		fsctlGetReparsePoint,
-		uintptr(unsafe.Pointer(&buf[0])),
-		uintptr(len(buf)),
+		0,
+		0,
 		uintptr(unsafe.Pointer(&buf[0])),
 		uintptr(len(buf)),
 		uintptr(unsafe.Pointer(&returned)),
@@ -244,6 +247,10 @@ func readMountPoint(path string) (string, bool, error) {
 		t = `\\` + strings.TrimPrefix(t, `UNC\`)
 	}
 	return t, true, nil
+}
+
+func (windowsPlatform) ResolvePath(path string) (string, error) {
+	return resolveViaReadLink(windowsPlatform{}, path)
 }
 
 func (windowsPlatform) RemoveLink(path string) error {

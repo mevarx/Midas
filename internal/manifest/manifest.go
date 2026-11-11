@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/midas-cli/midas/internal/platform"
 	"github.com/midas-cli/midas/internal/version"
 )
 
@@ -73,7 +74,7 @@ func Path(vault string) string {
 func Load(vault string) (*Manifest, error) {
 	meta := filepath.Join(vault, ".midas")
 	if fi, err := os.Lstat(meta); err == nil {
-		if !fi.IsDir() || fi.Mode()&os.ModeSymlink != 0 {
+		if !fi.IsDir() || fi.Mode()&os.ModeSymlink != 0 || !platform.IsRealDirectory(meta) {
 			return nil, fmt.Errorf("manifest directory %q is not a real directory", meta)
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -130,7 +131,7 @@ func (m *Manifest) Save(vault string) error {
 	p := Path(vault)
 	meta := filepath.Dir(p)
 	if fi, err := os.Lstat(meta); err == nil {
-		if !fi.IsDir() || fi.Mode()&os.ModeSymlink != 0 {
+		if !fi.IsDir() || fi.Mode()&os.ModeSymlink != 0 || !platform.IsRealDirectory(meta) {
 			return fmt.Errorf("manifest directory %q is not a real directory", meta)
 		}
 	} else if errors.Is(err, os.ErrNotExist) {
@@ -141,7 +142,7 @@ func (m *Manifest) Save(vault string) error {
 		return err
 	}
 	metaInfo, err := os.Lstat(meta)
-	if err != nil || !metaInfo.IsDir() || metaInfo.Mode()&os.ModeSymlink != 0 {
+	if err != nil || !metaInfo.IsDir() || metaInfo.Mode()&os.ModeSymlink != 0 || !platform.IsRealDirectory(meta) {
 		return fmt.Errorf("manifest directory %q is not a real directory", meta)
 	}
 	m.Schema = SchemaVersion
@@ -225,7 +226,7 @@ func (m *Manifest) validate(vault string) error {
 			if errors.Is(err, os.ErrNotExist) {
 				continue
 			}
-			if err != nil || !fi.IsDir() || fi.Mode()&os.ModeSymlink != 0 {
+			if err != nil || !fi.IsDir() || fi.Mode()&os.ModeSymlink != 0 || !platform.IsRealDirectory(dir) {
 				return fmt.Errorf("entry %s has a vault directory that is not a real directory", key)
 			}
 		}

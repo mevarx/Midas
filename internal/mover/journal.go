@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/midas-cli/midas/internal/platform"
 )
 
 // Journal states (Section 9.3).
@@ -251,7 +253,7 @@ func validateJournalDirs(vault string, create bool) error {
 		if err != nil {
 			return err
 		}
-		if !fi.IsDir() || fi.Mode()&os.ModeSymlink != 0 {
+		if !fi.IsDir() || fi.Mode()&os.ModeSymlink != 0 || !platform.IsRealDirectory(dir) {
 			return fmt.Errorf("journal directory %q is not a real directory", dir)
 		}
 	}

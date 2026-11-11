@@ -322,6 +322,5 @@ func backupID(s *backup.Set) string {
 }
 
 func moverRealDirectory(path string) bool {
-	info, err := os.Lstat(path)
-	return err == nil && info.IsDir() && info.Mode()&os.ModeSymlink == 0
+	return platform.IsRealDirectory(path)
 }
