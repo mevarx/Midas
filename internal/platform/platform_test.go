@@ -68,7 +68,7 @@ func TestResolvePathFollowsDirectoryLink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want, err := filepath.Abs(filepath.Join(external, "state"))
+	want, err := Current().ResolvePath(filepath.Join(external, "state"))
 	if err != nil {
 		t.Fatal(err)
 	}
