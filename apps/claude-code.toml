@@ -1,0 +1,53 @@
+id = "claude-code"
+name = "Claude Code"
+homepage = "https://claude.com/claude-code"
+description = "Anthropic's agentic coding CLI"
+
+[process]
+windows = ["claude.exe"]
+linux = ["claude"]
+darwin = ["claude"]
+# Terminal-based installations run the CLI through node.
+cmdline_contains = ["claude"]
+
+[launch]
+command = "claude"
+
+[[target]]
+name = "data"
+windows = "~/.claude"
+linux = "~/.claude"
+darwin = "~/.claude"
+kind = "dir"
+
+[env]
+# CLAUDE_CONFIG_DIR is intentionally not set: Midas relocates the folder with
+# a link, and the tool keeps using its normal path.
+
+[backup]
+include = [
+  "settings.json",
+  "settings.local.json",
+  "CLAUDE.md",
+  "*.md",
+  "commands/**",
+  "agents/**",
+  "plugins/**",
+  "skills/**",
+  "projects/**",
+  ".credentials.json",
+]
+exclude = [
+  "cache/**",
+  "logs/**",
+  "tmp/**",
+  "shell-snapshots/**",
+  "statsig/**",
+  "todos/**",
+  "**/node_modules/**",
+  "*.log",
+]
+max_file_mb = 50
+
+[notes]
+text = "Do not move ~/.claude.json; it is a file, not a folder."

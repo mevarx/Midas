@@ -1,0 +1,27 @@
+id = "hermes"
+name = "Hermes"
+homepage = "https://github.com/"
+description = "Hermes agent data folder"
+
+[process]
+windows = ["hermes.exe"]
+linux = ["hermes"]
+darwin = ["hermes"]
+
+[launch]
+command = "hermes"
+
+[[target]]
+name = "data"
+windows = "~/.hermes"
+linux = "~/.hermes"
+darwin = "~/.hermes"
+kind = "dir"
+
+[backup]
+include = ["*.json", "*.toml", "*.yaml", "*.md", "agents/**", "plugins/**"]
+exclude = ["cache/**", "logs/**", "tmp/**", "**/node_modules/**", "*.log"]
+max_file_mb = 50
+
+[notes]
+text = "Paths are a starting point; verify against the installed version."

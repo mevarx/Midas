@@ -1,0 +1,48 @@
+id = "opencode"
+name = "OpenCode"
+homepage = "https://opencode.ai"
+description = "Open-source AI coding agent for the terminal"
+
+[process]
+windows = ["opencode.exe"]
+linux = ["opencode"]
+darwin = ["opencode"]
+
+[launch]
+command = "opencode"
+
+[[target]]
+name = "data"
+windows = "{xdg_data}/opencode"
+linux = "{xdg_data}/opencode"
+darwin = "{xdg_data}/opencode"
+kind = "dir"
+
+[[target]]
+name = "config"
+windows = "{xdg_config}/opencode"
+linux = "{xdg_config}/opencode"
+darwin = "{xdg_config}/opencode"
+kind = "dir"
+
+[[target]]
+name = "cache"
+windows = "{xdg_cache}/opencode"
+linux = "{xdg_cache}/opencode"
+darwin = "{xdg_cache}/opencode"
+kind = "dir"
+
+[[target]]
+name = "state"
+windows = "{xdg_state}/opencode"
+linux = "{xdg_state}/opencode"
+darwin = "{xdg_state}/opencode"
+kind = "dir"
+
+[backup]
+include = ["config.json", "auth.json", "*.md", "plugins/**", "skills/**"]
+exclude = ["cache/**", "logs/**", "tmp/**", "**/node_modules/**", "*.log"]
+max_file_mb = 50
+
+[notes]
+text = "On Windows the XDG-style folders resolve under the user profile."
