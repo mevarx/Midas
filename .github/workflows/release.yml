@@ -124,8 +124,18 @@ jobs:
               subprocess.check_call(["midas", "version", "--json"], env=env)
           PY
 
+  release-gate:
+    needs: [validate, cross-compile]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enforce release qualification gate
+        run: python3 scripts/release_gate.py
+
   goreleaser:
-    needs: [validate, cross-compile, release-artifacts]
+    needs: [validate, cross-compile, release-artifacts, release-gate]
     runs-on: ubuntu-latest
     permissions:
       contents: write
