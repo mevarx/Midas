@@ -110,9 +110,12 @@ taken. Behavior guarantees live in `SAFETY.md`; compatibility policy in
 
 ## Known limitations
 
-- **Long paths on Windows**: the junction APIs use `\\?\`, but ordinary copy
-  and rename go through `os`, which handles most long paths on modern Go but
-  is not uniformly prefixed. Verify with a >260-character fixture.
+- **Long paths on Windows**: verified with native tests
+  (`internal/mover/longpath_windows_test.go`,
+  `internal/platform/longpath_windows_test.go`): junction creation, move,
+  restore, and rollback all work with full paths beyond the 260-character
+  boundary on NTFS. Other filesystems and non-standard volumes remain
+  untested; users on those report via `midas doctor`.
 - **Resume** restarts the copy from scratch after validating the journal,
   ownership, and backup; already-copied files are not skipped.
 - **Shims**: Windows `.cmd` wrappers forward `%*`; unusual quoting (embedded
