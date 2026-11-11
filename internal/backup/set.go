@@ -24,7 +24,7 @@ import (
 // SchemaVersion is the BACKUP.json format version.
 const SchemaVersion = 1
 
-// Backup set states (Section 9.2.3).
+// Backup set states.
 const (
 	StateCreating   = "creating"
 	StateVerified   = "verified"

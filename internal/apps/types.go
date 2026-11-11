@@ -107,8 +107,8 @@ func (d *Definition) TargetNames() []string {
 }
 
 // EffectiveBackupRule returns the definition's backup rule or the safe
-// fallback required by the PRD (all files up to 25 MB except regenerable
-// folders) when no [backup] section exists.
+// fallback (all files up to 25 MB except regenerable folders) when no
+// [backup] section exists.
 func (d *Definition) EffectiveBackupRule() BackupRule {
 	if d.Backup != nil && (len(d.Backup.Include) > 0 || len(d.Backup.Exclude) > 0 || d.Backup.MaxFileMB > 0) {
 		rule := *d.Backup

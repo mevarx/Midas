@@ -15,7 +15,7 @@ import (
 	"github.com/midas-cli/midas/internal/ui"
 )
 
-// Exit codes (Section 6.12).
+// Exit codes.
 const (
 	ExitOK              = 0
 	ExitGeneral         = 1

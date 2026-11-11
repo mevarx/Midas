@@ -39,7 +39,7 @@ type MoveOptions struct {
 	Warn              func(format string, a ...any)
 }
 
-// MoveTarget runs the Section 9.3 state machine for one target. On any
+// MoveTarget runs the journaled move state machine for one target. On any
 // failure after the safety net it performs an automatic rollback before
 // returning.
 func MoveTarget(o MoveOptions) (entry manifest.Entry, err error) {

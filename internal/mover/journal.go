@@ -17,7 +17,7 @@ import (
 	"github.com/midas-cli/midas/internal/platform"
 )
 
-// Journal states (Section 9.3).
+// Journal states.
 const (
 	StateCopying       = "copying"
 	StateVerifying     = "verifying"

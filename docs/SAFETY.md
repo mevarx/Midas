@@ -35,7 +35,7 @@ guarantees, what it does not, and how to recover by hand.
   OS. The verified file backup is the real safety net.
 - **Midas cannot stop you from deleting backup files by hand.** Read-only
   filesystem flags and owner-only modes are guardrails, not a security control.
-- **Midas does not clean app data** (no `midas clean` in v1), manage drives, or
+- **Midas does not clean app data** (there is no `midas clean` command), manage drives, or
   support network shares as vaults.
 - **Midas makes no network calls**, has no telemetry, and cannot recover data
   from a drive that has physically failed. Keep the backup on a *different*

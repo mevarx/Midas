@@ -41,9 +41,9 @@ is on `PATH`.
    Never downgrade after a metadata schema change without the documented
    recovery procedure.
 
-The current v1 development line reads legacy config files without
-`schema_version` as schema 1. Saving writes the version field. No data-directory
-migration is currently performed during installation or upgrade.
+Config files without `schema_version` are read as schema 1. Saving writes the
+version field. No data-directory migration is currently performed during
+installation or upgrade.
 
 ## Uninstall
 

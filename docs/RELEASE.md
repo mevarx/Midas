@@ -13,8 +13,8 @@ Before tagging v1.0, maintainers must additionally confirm:
 
 - native Windows, Linux, and macOS tests pass on the release commit, with both
   macOS architectures qualified;
-- M1–M5 acceptance gates are complete and critical data-loss findings are
-  resolved;
+- move/restore/rollback, backup protection, and recovery flows are covered by
+  tests and critical data-loss findings are resolved;
 - security-review findings are dispositioned and known platform limitations
   are documented;
 - upgrade and install guidance has been reviewed and prior-version metadata

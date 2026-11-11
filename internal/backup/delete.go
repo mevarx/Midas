@@ -36,7 +36,7 @@ type ProtectedError struct{ Reason string }
 
 func (e *ProtectedError) Error() string { return e.Reason }
 
-// Delete removes a backup set, enforcing every Section 9.2.3 rule first.
+// Delete removes a backup set, enforcing every protection rule first.
 // It is the only exported deletion entry point in this package.
 func (m *Manager) Delete(s *Set, opts DeleteOptions) error {
 	if err := CheckDelete(s, opts.Guard); err != nil {

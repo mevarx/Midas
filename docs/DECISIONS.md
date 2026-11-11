@@ -1,7 +1,8 @@
 # Implementation decisions
 
-Decisions made while implementing PRD v1.2, in the order they were taken. The
-PRD is the source of truth; these notes explain choices where it left room.
+Design choices behind the current implementation, in the order they were
+taken. Behavior guarantees live in `SAFETY.md`; compatibility policy in
+`COMPATIBILITY.md`.
 
 ## Dependencies
 
@@ -35,9 +36,9 @@ PRD is the source of truth; these notes explain choices where it left room.
 - **Cross-volume moves** copy to `<dest>.midas-partial`, verify, rename it into
   place, rename the original to `<original>.midas-bak`, create the link, health
   check, write the manifest, then remove `.midas-bak`.
-- Files that vanish or cannot be read during a copy are treated as errors
-  ("report which files could not be read and abort rather than skipping
-  silently", PRD 9.6). Symlinks are recreated, never followed. Windows
+- Files that vanish or cannot be read during a copy are treated as errors:
+  Midas reports which files could not be read and aborts rather than
+  skipping silently. Symlinks are recreated, never followed. Windows
   junctions inside a target are detected through the platform layer and are not
   descended into.
 - **Case collisions** between paths that differ only by case abort the copy
@@ -97,7 +98,7 @@ PRD is the source of truth; these notes explain choices where it left room.
 
 ## Doctor
 
-- v1 repairs: recreate a missing link when the vault copy exists, remove stale
+- Current repairs: recreate a missing link when the vault copy exists, remove stale
   LOCKs whose PID is dead, remove orphaned `.midas-partial` directories, and
   rebuild a corrupt manifest by scanning known targets for links into the
   vault.
@@ -107,25 +108,18 @@ PRD is the source of truth; these notes explain choices where it left room.
 - Repairs prompt unless `--repair` or `--yes` is given. `--dry-run` never
   changes anything.
 
-## Known gaps against the PRD (next milestones)
+## Known limitations
 
-- **Automated tests are not written yet.** The code compiles on
-  windows/linux/darwin (amd64/arm64) and `go vet` is clean, but the Section 14
-  suite (move/rollback failure injection, junction tests, deletion protection,
-  crash tests, large-tree test) is still to be added and run. Treat this build
-  as code-complete for the M1–M2 command surface, not milestone-accepted.
-- **Worker pool copy** (PRD 12) is sequential today. Memory is bounded
-  (1 MiB buffer per copy); throughput on many small files is lower than the
-  target. Planned for M4.
 - **Long paths on Windows**: the junction APIs use `\\?\`, but ordinary copy
-  and rename go through `os`, which handles most long paths on modern Go but is
-  not uniformly prefixed. Verify on real CI with a >260-character fixture.
-- **Resume** (Section 9.4) is journal-based for diagnosis and rollback; an
-  automatic re-run that skips already-copied files is not implemented yet.
-  `move` refuses to start when a journal exists and points to doctor/rollback.
-- **Shell completions** (FR-15) are not generated yet.
+  and rename go through `os`, which handles most long paths on modern Go but
+  is not uniformly prefixed. Verify with a >260-character fixture.
+- **Resume** restarts the copy from scratch after validating the journal,
+  ownership, and backup; already-copied files are not skipped.
 - **Shims**: Windows `.cmd` wrappers forward `%*`; unusual quoting (embedded
-  quotes in arguments) can still be mangled by `cmd.exe`. Unix wrappers forward
-  `"$@"` exactly.
-- **MacOS TCC**: permission errors surface as clear copy errors; dedicated
+  quotes in arguments) can still be mangled by `cmd.exe`. Unix wrappers
+  forward `"$@"` exactly.
+- **macOS TCC**: permission errors surface as clear copy errors; dedicated
   Full Disk Access guidance is not yet added to output.
+- **Link replacement**: when an app update replaces a link with a real
+  folder, doctor reports both trees and leaves the merge decision to the
+  user; automatic merging is not implemented.

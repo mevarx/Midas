@@ -6,7 +6,7 @@ macOS, and Linux**.
 
 ## Ground rules
 
-- Keep behavior aligned with `PRD-v1.2.md` and the milestone/master PRD.
+- Keep behavior aligned with the docs in this repo (`README.md`, `docs/SAFETY.md`, `docs/COMPATIBILITY.md`).
 - Never hardcode app names or paths in Go. They belong in `apps/*.toml`.
 - All OS-specific code stays in `internal/platform`, behind the `Platform`
   interface.
@@ -56,7 +56,7 @@ docs: explain restore-point limits
 ```
 
 Explain *why* in the body when the change affects data safety. Reference the
-PRD section.
+relevant doc section (for example `docs/SAFETY.md`).
 
 ## Pull requests
 

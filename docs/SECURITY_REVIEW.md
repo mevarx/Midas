@@ -1,6 +1,6 @@
-# M6 data-safety review record
+# Data-safety review record
 
-**Review scope:** Midas repository at the M4–M6 qualification PR head.
+**Review scope:** Midas repository at the current head.
 **Review type:** Source-level safety review plus automated tests and static
 checks; not an independent penetration test or a certification.
 

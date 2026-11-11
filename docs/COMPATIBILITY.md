@@ -1,7 +1,8 @@
 # Compatibility policy
 
-This policy defines v1.0 qualification targets; it does not claim that a
-release has passed qualification before its CI and release checks complete.
+This policy defines the supported platforms, formats, and versioning rules.
+It does not claim that a release has passed qualification before its CI and
+release checks complete.
 
 ## Platform and build targets
 
@@ -37,5 +38,5 @@ supported after a format migration unless a release note explicitly says so.
 After v1.0, Midas follows Semantic Versioning: breaking CLI, config, manifest,
 backup, journal, or JSON changes require a major version; compatible additions
 are minor; compatible fixes are patch releases. Release notes identify upgrade
-and recovery effects. During pre-v1 development, format and CLI changes may
-still occur; preserve the vault and backups before upgrading.
+and recovery effects. Until v1.0 is tagged, format and CLI changes may still
+occur; preserve the vault and backups before upgrading.

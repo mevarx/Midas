@@ -55,7 +55,7 @@ func ExpandPath(raw string) (string, error) {
 	return filepath.Clean(filepath.FromSlash(s)), nil
 }
 
-// ValidateTargetPath enforces the Section 7.2 path rules.
+// ValidateTargetPath enforces the target path safety rules.
 func ValidateTargetPath(p, home, vault string) error {
 	if !filepath.IsAbs(p) {
 		return fmt.Errorf("path %q is not absolute after expansion", p)
