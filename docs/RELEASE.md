@@ -27,7 +27,8 @@ Before tagging v1.0, maintainers must additionally confirm:
   macOS architectures qualified;
 - [x] move/restore/rollback, backup protection, and recovery flows are covered by
   tests and critical data-loss findings are resolved (the Windows nested-backup
-  path defect found during this qualification is fixed in this release);
+  path defect and the Unix backup-set restore defect found during this
+  qualification are fixed in this release);
 - [x] security-review findings are dispositioned and known platform limitations
   are documented;
 - [x] upgrade and install guidance has been reviewed and prior-version metadata

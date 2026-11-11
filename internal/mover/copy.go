@@ -37,12 +37,18 @@ type CopyOptions struct {
 	Progress Reporter
 	Context  context.Context
 	Workers  int
+	// StageWritable creates copied files and directories with
+	// owner-writable modes instead of the source's permissions. Use when
+	// staging a restore from a read-only-protected tree such as a backup
+	// set; the caller applies the recorded final modes after verification.
+	StageWritable bool
 }
 
 type copyTask struct {
 	source string
 	dest   string
 	info   os.FileInfo
+	perm   os.FileMode
 }
 
 const copyBufSize = 1 << 20
@@ -65,7 +71,11 @@ func CopyTree(src, dst string, opts CopyOptions) (Stats, error) {
 	if _, err := os.Lstat(dst); err == nil {
 		return st, fmt.Errorf("destination %q already exists", dst)
 	}
-	if err := os.MkdirAll(dst, fi.Mode().Perm()); err != nil {
+	rootMode := fi.Mode().Perm()
+	if opts.StageWritable {
+		rootMode = 0o700
+	}
+	if err := os.MkdirAll(dst, rootMode); err != nil {
 		return st, err
 	}
 	st.Dirs++
@@ -124,7 +134,11 @@ func CopyTree(src, dst string, opts CopyOptions) (Stats, error) {
 			return fmt.Errorf("stat %q: %w", p, ierr)
 		}
 		if d.IsDir() {
-			if err := os.MkdirAll(target, info.Mode().Perm()); err != nil {
+			dirMode := info.Mode().Perm()
+			if opts.StageWritable {
+				dirMode = 0o700
+			}
+			if err := os.MkdirAll(target, dirMode); err != nil {
 				return err
 			}
 			_ = os.Chtimes(target, info.ModTime(), info.ModTime())
@@ -140,10 +154,14 @@ func CopyTree(src, dst string, opts CopyOptions) (Stats, error) {
 		}
 		seen[lower] = filepath.ToSlash(rel)
 
-		if pool != nil {
-			return pool.submit(copyTask{source: p, dest: target, info: info})
+		perm := info.Mode().Perm()
+		if opts.StageWritable {
+			perm = 0o600
 		}
-		n, err := copyRegular(ctx, p, target, info)
+		if pool != nil {
+			return pool.submit(copyTask{source: p, dest: target, info: info, perm: perm})
+		}
+		n, err := copyRegular(ctx, p, target, info, perm)
 		if err != nil {
 			return err
 		}
@@ -247,7 +265,7 @@ func startCopyPool(ctx context.Context, workers int, progress Reporter) (*copyPo
 					pool.results <- copyResult{index: job.index, err: err}
 					continue
 				}
-				n, err := copyRegular(pool.ctx, job.task.source, job.task.dest, job.task.info)
+				n, err := copyRegular(pool.ctx, job.task.source, job.task.dest, job.task.info, job.task.perm)
 				if err == nil && reporter != nil {
 					reporter.Add(n)
 					if fileReporter, ok := reporter.(interface{ AddFile() }); ok {
@@ -378,7 +396,7 @@ func recreateLink(srcRoot, dstRoot, src, dst, target string, d fs.DirEntry) erro
 	return os.Symlink(linkTarget, dst)
 }
 
-func copyRegular(ctx context.Context, src, dst string, fi os.FileInfo) (int64, error) {
+func copyRegular(ctx context.Context, src, dst string, fi os.FileInfo, perm os.FileMode) (int64, error) {
 	in, err := os.Open(src)
 	if err != nil {
 		return 0, fmt.Errorf("open %q: %w (locked or unreadable; nothing was removed)", src, err)
@@ -391,7 +409,7 @@ func copyRegular(ctx context.Context, src, dst string, fi os.FileInfo) (int64, e
 	if !os.SameFile(fi, before) || before.Size() != fi.Size() || !before.ModTime().Equal(fi.ModTime()) {
 		return 0, fmt.Errorf("source %q changed before it could be copied", src)
 	}
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_EXCL|os.O_WRONLY, fi.Mode().Perm())
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_EXCL|os.O_WRONLY, perm)
 	if err != nil {
 		return 0, fmt.Errorf("create %q: %w", dst, err)
 	}

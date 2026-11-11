@@ -130,6 +130,20 @@ func TestRollbackFromBackupSetVerifiesRestoredData(t *testing.T) {
 	if got, err := os.ReadFile(filepath.Join(source, "state")); err != nil || string(got) != "value" {
 		t.Fatalf("backup-restored data mismatch: %q, %v", got, err)
 	}
+	// The protected set tree is read-only; the restored data must carry the
+	// recorded original modes instead.
+	for _, f := range set.Files {
+		if f.Link != "" {
+			continue
+		}
+		fi, err := os.Lstat(filepath.Join(source, f.Path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fi.Mode().Perm() != os.FileMode(f.Mode) {
+			t.Fatalf("restored %q mode = %v, want recorded %v", f.Path, fi.Mode().Perm(), os.FileMode(f.Mode))
+		}
+	}
 	if set.State != backup.StateRolledBack {
 		t.Fatalf("backup set state = %q, want rolled-back", set.State)
 	}

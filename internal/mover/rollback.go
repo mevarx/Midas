@@ -338,7 +338,7 @@ func restoreFromSet(s *backup.Set, source string, progress Reporter, ctx context
 	if err := MarkOwnedPath(filepath.Dir(partial), partial, operationID, "rollback-partial"); err != nil {
 		return err
 	}
-	if _, err := CopyTree(s.FilesDir(), partial, CopyOptions{Progress: progress, Context: ctx, Workers: workers}); err != nil {
+	if _, err := CopyTree(s.FilesDir(), partial, CopyOptions{Progress: progress, Context: ctx, Workers: workers, StageWritable: true}); err != nil {
 		return fmt.Errorf("restore from backup %s: %w", s.ID, err)
 	}
 	if _, err := VerifyTree(s.FilesDir(), partial, true); err != nil {
@@ -349,6 +349,16 @@ func restoreFromSet(s *backup.Set, source string, progress Reporter, ctx context
 	}
 	if err := ForgetOwnership(filepath.Dir(partial), partial, operationID, "rollback-partial"); err != nil {
 		return err
+	}
+	// The set tree is chmod'ed read-only for protection; the recorded
+	// per-file modes from BACKUP.json are the ones the original data had.
+	for _, f := range s.Files {
+		if f.Link != "" {
+			continue
+		}
+		if err := os.Chmod(filepath.Join(source, f.Path), os.FileMode(f.Mode)); err != nil {
+			return fmt.Errorf("restore file mode for %q: %w", f.Path, err)
+		}
 	}
 	return nil
 }

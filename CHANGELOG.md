@@ -9,6 +9,10 @@ before publication.
 - Fix Windows backup creation rejecting sources with subdirectories: rel
   paths are stored slash-separated on every platform, so nested app data is
   backed up and verified instead of aborting the move.
+- Fix rollback from a backup set failing on Linux and macOS: staging now
+  copies with writable modes and applies the original per-file modes
+  recorded in BACKUP.json, so protected read-only sets can restore data
+  after total loss instead of aborting mid-copy.
 - Add dedicated move/restore/rollback lifecycle tests with failure injection
   and interruption recovery; supersede the combined ownership-file coverage.
 - Add native Windows tests for paths beyond the 260-character boundary:
