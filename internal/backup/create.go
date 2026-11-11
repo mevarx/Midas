@@ -169,6 +169,9 @@ func (m *Manager) fill(s *Set, opts CreateOptions) error {
 		if rerr != nil || rel == "." {
 			return rerr
 		}
+		// BACKUP.json stores slash-separated paths on every platform so
+		// metadata stays portable and passes path validation.
+		rel = filepath.ToSlash(rel)
 
 		// Links are recreated, never followed. Junctions on Windows are not
 		// reported as ModeSymlink by Lstat, so ask the platform layer.
