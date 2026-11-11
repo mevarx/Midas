@@ -56,3 +56,44 @@ func TestCreateLinkRejectsExistingDirectoryWithoutChangingIt(t *testing.T) {
 		t.Fatalf("existing directory changed: %q, %v", got, err)
 	}
 }
+
+func TestResolvePathFollowsDirectoryLink(t *testing.T) {
+	root := t.TempDir()
+	external := t.TempDir()
+	link := filepath.Join(root, "linked")
+	if err := Current().CreateLink(link, external); err != nil {
+		t.Skipf("directory links unavailable: %v", err)
+	}
+	got, err := Current().ResolvePath(filepath.Join(link, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := filepath.Abs(filepath.Join(external, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !SamePath(got, want) {
+		t.Fatalf("ResolvePath = %q, want %q", got, want)
+	}
+}
+
+func TestIsRealDirectoryRejectsDirectoryLink(t *testing.T) {
+	root := t.TempDir()
+	real := filepath.Join(root, "real")
+	if err := os.Mkdir(real, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if !IsRealDirectory(real) {
+		t.Fatal("real directory was rejected")
+	}
+	link := filepath.Join(root, "linked")
+	if err := Current().CreateLink(link, real); err != nil {
+		t.Skipf("directory links unavailable: %v", err)
+	}
+	if IsRealDirectory(link) {
+		t.Fatal("directory link was accepted as a real directory")
+	}
+	if !IsDirectoryLink(link) {
+		t.Fatal("directory link target was not recognized as a directory")
+	}
+}

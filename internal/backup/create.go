@@ -56,6 +56,14 @@ func EstimateBackup(src, mode string, rule apps.BackupRule) (Estimate, error) {
 		if rerr != nil || rel == "." {
 			return rerr
 		}
+		if _, isLink, lerr := platform.Current().ReadLink(p); lerr != nil {
+			return fmt.Errorf("read link %q: %w", p, lerr)
+		} else if isLink {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
 		if d.IsDir() {
 			return nil
 		}
@@ -163,8 +171,12 @@ func (m *Manager) fill(s *Set, opts CreateOptions) error {
 		}
 
 		// Links are recreated, never followed. Junctions on Windows are not
-		// always reported as ModeSymlink by Lstat, so ask the platform layer.
-		if target, isLink, lerr := platform.Current().ReadLink(p); lerr == nil && isLink {
+		// reported as ModeSymlink by Lstat, so ask the platform layer.
+		target, isLink, lerr := platform.Current().ReadLink(p)
+		if lerr != nil {
+			return fmt.Errorf("read link %q: %w", p, lerr)
+		}
+		if isLink {
 			if err := m.saveLink(s, rel, p, target, d); err != nil {
 				return err
 			}
@@ -172,8 +184,6 @@ func (m *Manager) fill(s *Set, opts CreateOptions) error {
 				return filepath.SkipDir
 			}
 			return nil
-		} else if lerr != nil && d.Type()&os.ModeSymlink != 0 {
-			return fmt.Errorf("read link %q: %w", p, lerr)
 		}
 
 		if d.IsDir() {
@@ -234,7 +244,8 @@ func (m *Manager) saveLink(s *Set, rel, src, target string, d fs.DirEntry) error
 		abs = filepath.Join(filepath.Dir(src), target)
 	}
 	var linkErr error
-	if d.IsDir() {
+	linkIsDir := d.IsDir() || platform.IsDirectoryLink(src)
+	if linkIsDir {
 		linkErr = platform.Current().CreateLink(dest, abs)
 	} else {
 		linkErr = os.Symlink(target, dest)
@@ -249,7 +260,7 @@ func (m *Manager) saveLink(s *Set, rel, src, target string, d fs.DirEntry) error
 	// so verification compares like with like. File symlinks are stored
 	// verbatim.
 	stored := target
-	if d.IsDir() {
+	if linkIsDir {
 		stored = abs
 	}
 	s.Files = append(s.Files, File{
@@ -383,6 +394,11 @@ func protectTree(s *Set) error {
 	return filepath.WalkDir(s.FilesDir(), func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
+		}
+		if _, isLink, lerr := platform.Current().ReadLink(p); lerr != nil {
+			return fmt.Errorf("inspect backup path %q: %w", p, lerr)
+		} else if isLink {
+			return nil
 		}
 		if d.Type()&os.ModeSymlink != 0 {
 			return nil

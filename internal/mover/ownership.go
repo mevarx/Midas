@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/midas-cli/midas/internal/platform"
 )
 
 const ownershipSchema = 1
@@ -45,7 +47,7 @@ func EnsureVaultAppDir(vault, app string) error {
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return err
 	}
-	realRoot, err := filepath.EvalSymlinks(root)
+	realRoot, err := platform.Current().ResolvePath(root)
 	if err != nil {
 		return err
 	}
@@ -60,10 +62,10 @@ func EnsureVaultAppDir(vault, app string) error {
 		if err != nil {
 			return err
 		}
-		if !fi.IsDir() || fi.Mode()&os.ModeSymlink != 0 {
+		if !fi.IsDir() || fi.Mode()&os.ModeSymlink != 0 || !platform.IsRealDirectory(dir) {
 			return fmt.Errorf("vault app path %q is not a real directory", dir)
 		}
-		resolved, err := filepath.EvalSymlinks(dir)
+		resolved, err := platform.Current().ResolvePath(dir)
 		if err != nil {
 			return err
 		}
@@ -152,7 +154,7 @@ func MarkExistingOwnedPath(root, path, operationID, kind string) error {
 	if err != nil {
 		return err
 	}
-	if !fi.IsDir() || fi.Mode()&os.ModeSymlink != 0 {
+	if !fi.IsDir() || fi.Mode()&os.ModeSymlink != 0 || !platform.IsRealDirectory(path) {
 		return fmt.Errorf("refusing to claim non-directory path %q", path)
 	}
 	record := ownershipRecord{Schema: ownershipSchema, OperationID: operationID, Kind: kind, Path: path}
@@ -241,7 +243,7 @@ func RemoveOwnedPath(root, path, operationID, kind string) error {
 	if err != nil {
 		return err
 	}
-	if !before.IsDir() || before.Mode()&os.ModeSymlink != 0 {
+	if !before.IsDir() || before.Mode()&os.ModeSymlink != 0 || !platform.IsRealDirectory(path) {
 		return fmt.Errorf("owned path %q is not a real directory; preserving it", path)
 	}
 	after, err := os.Lstat(path)

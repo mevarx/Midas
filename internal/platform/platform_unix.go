@@ -55,6 +55,10 @@ func (unixPlatform) ReadLink(path string) (string, bool, error) {
 	return t, true, nil
 }
 
+func (unixPlatform) ResolvePath(path string) (string, error) {
+	return resolveViaReadLink(unixPlatform{}, path)
+}
+
 func (unixPlatform) RemoveLink(path string) error {
 	_, isLink, err := unixCurrent().ReadLink(path)
 	if err != nil {

@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"sort"
 	"time"
+
+	"github.com/midas-cli/midas/internal/platform"
 )
 
 // Guard supplies the live checks deletion must perform. Callers wire these
@@ -135,7 +137,11 @@ func lockIsLive(s *Set, g Guard) (bool, error) {
 }
 
 // removeTreeNoFollow deletes root depth-first using Lstat semantics, clearing
-// read-only flags and never following links. BACKUP.json is removed last.
+// read-only flags and never following links. Junctions are links, not
+// directories: WalkDir does not descend into them (Go reports them as
+// irregular files), so each is a single entry removed with os.Remove, which
+// deletes the reparse point without touching the target. BACKUP.json is
+// removed last.
 func removeTreeNoFollow(root string) error {
 	info, err := os.Lstat(root)
 	if err != nil {
@@ -143,6 +149,12 @@ func removeTreeNoFollow(root string) error {
 			return nil
 		}
 		return err
+	}
+	if _, isLink, lerr := platform.Current().ReadLink(root); lerr == nil && isLink {
+		_ = os.Chmod(root, 0o600)
+		return platform.Current().RemoveLink(root)
+	} else if lerr != nil {
+		return fmt.Errorf("inspect %q: %w", root, lerr)
 	}
 	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		_ = os.Chmod(root, 0o600)
@@ -155,6 +167,11 @@ func removeTreeNoFollow(root string) error {
 			return err
 		}
 		paths = append(paths, p)
+		if _, isLink, lerr := platform.Current().ReadLink(p); lerr != nil {
+			return fmt.Errorf("inspect %q: %w", p, lerr)
+		} else if isLink {
+			return nil
+		}
 		if d.Type()&os.ModeSymlink == 0 {
 			_ = os.Chmod(p, 0o700)
 		}

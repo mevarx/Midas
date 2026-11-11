@@ -21,7 +21,11 @@ func Measure(root string) (uint64, int, error) {
 		if p == root {
 			return nil
 		}
-		if _, isLink, lerr := platform.Current().ReadLink(p); lerr == nil && isLink {
+		_, isLink, lerr := platform.Current().ReadLink(p)
+		if lerr != nil {
+			return fmt.Errorf("read link %q: %w", p, lerr)
+		}
+		if isLink {
 			if d.IsDir() {
 				return filepath.SkipDir
 			}

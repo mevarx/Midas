@@ -105,7 +105,11 @@ func CopyTree(src, dst string, opts CopyOptions) (Stats, error) {
 		}
 		target := filepath.Join(dst, rel)
 
-		if lt, isLink, lerr := platform.Current().ReadLink(p); lerr == nil && isLink {
+		lt, isLink, lerr := platform.Current().ReadLink(p)
+		if lerr != nil {
+			return fmt.Errorf("read link %q: %w", p, lerr)
+		}
+		if isLink {
 			if err := recreateLink(src, dst, p, target, lt, d); err != nil {
 				return err
 			}
@@ -113,8 +117,6 @@ func CopyTree(src, dst string, opts CopyOptions) (Stats, error) {
 				return filepath.SkipDir
 			}
 			return nil
-		} else if lerr != nil && d.Type()&os.ModeSymlink != 0 {
-			return fmt.Errorf("read link %q: %w", p, lerr)
 		}
 
 		info, ierr := d.Info()
@@ -369,12 +371,7 @@ func recreateLink(srcRoot, dstRoot, src, dst, target string, d fs.DirEntry) erro
 			linkTarget = mapped
 		}
 	}
-	linkIsDir := d.IsDir()
-	if !linkIsDir {
-		if info, err := os.Stat(src); err == nil && info.IsDir() {
-			linkIsDir = true
-		}
-	}
+	linkIsDir := d.IsDir() || platform.IsDirectoryLink(src)
 	if linkIsDir {
 		return platform.Current().CreateLink(dst, directoryTarget)
 	}
@@ -454,19 +451,34 @@ func copyRegular(ctx context.Context, src, dst string, fi os.FileInfo) (int64, e
 // TreeSnapshot captures stable metadata for source-mutation detection. File
 // content integrity remains the responsibility of VerifyTree's hash mode.
 func TreeSnapshot(root string) (map[string]string, error) {
-	fi, err := os.Lstat(root)
-	if err != nil {
+	if _, err := os.Lstat(root); err != nil {
 		return nil, err
 	}
-	if !fi.IsDir() || fi.Mode()&os.ModeSymlink != 0 {
+	if !platform.IsRealDirectory(root) {
 		return nil, fmt.Errorf("%q is not a real directory", root)
 	}
 	out := make(map[string]string)
-	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return fmt.Errorf("inspect source %q: %w", path, walkErr)
 		}
 		if path == root {
+			return nil
+		}
+		// Links first: on Windows a junction reports as an irregular file,
+		// not a directory, and must never fall through to the dir/file
+		// branches below.
+		if target, isLink, err := platform.Current().ReadLink(path); err != nil {
+			return err
+		} else if isLink {
+			rel, err := filepath.Rel(root, path)
+			if err != nil || rel == ".." || filepath.IsAbs(rel) || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				return fmt.Errorf("source entry %q escapes %q", path, root)
+			}
+			out[filepath.ToSlash(rel)] = fmt.Sprintf("link:%s|%d|%d|%o", linkTargetIdentity(root, path, target), 0, 0, 0o777)
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		rel, err := filepath.Rel(root, path)
@@ -482,10 +494,6 @@ func TreeSnapshot(root string) (map[string]string, error) {
 		mtime := info.ModTime().UnixNano()
 		if info.IsDir() {
 			kind, size, mtime = "dir", 0, 0
-		} else if target, isLink, err := platform.Current().ReadLink(path); err != nil {
-			return err
-		} else if isLink {
-			kind, size, mtime = "link:"+linkTargetIdentity(root, path, target), 0, 0
 		} else if !info.Mode().IsRegular() {
 			return fmt.Errorf("unsupported source type at %q", path)
 		}
@@ -534,7 +542,11 @@ func VerifyTreeContext(ctx context.Context, src, dst string, hash bool, progress
 		}
 		tp := filepath.Join(dst, rel)
 
-		if lt, isLink, lerr := platform.Current().ReadLink(p); lerr == nil && isLink {
+		lt, isLink, lerr := platform.Current().ReadLink(p)
+		if lerr != nil {
+			return fmt.Errorf("read link %q: %w", p, lerr)
+		}
+		if isLink {
 			dt, isDstLink, derr := platform.Current().ReadLink(tp)
 			if derr != nil || !isDstLink || !sameLinkTarget(lt, dt, src, dst, p, tp) {
 				problems = append(problems, rel+": link missing or pointing elsewhere")

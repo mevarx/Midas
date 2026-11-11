@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/midas-cli/midas/internal/manifest"
+	"github.com/midas-cli/midas/internal/platform"
 )
 
 // SchemaVersion is the BACKUP.json format version.
@@ -156,7 +157,7 @@ func LoadSet(dir string) (*Set, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !dirInfo.IsDir() || dirInfo.Mode()&os.ModeSymlink != 0 {
+	if !dirInfo.IsDir() || dirInfo.Mode()&os.ModeSymlink != 0 || !platform.IsRealDirectory(dir) {
 		return nil, fmt.Errorf("backup set path %q is not a real directory", dir)
 	}
 	path := filepath.Join(dir, "BACKUP.json")

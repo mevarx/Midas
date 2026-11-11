@@ -31,6 +31,13 @@ type Platform interface {
 	// it points. It never follows the link.
 	ReadLink(path string) (target string, isLink bool, err error)
 
+	// ResolvePath resolves every link component of path (including Windows
+	// junctions, which filepath.EvalSymlinks ignores) and returns the
+	// absolute resolved path. A missing leaf is tolerated: resolution
+	// stops at the first component that does not exist and joins the
+	// remainder verbatim.
+	ResolvePath(path string) (string, error)
+
 	// RemoveLink removes a link without touching its target's contents.
 	RemoveLink(path string) error
 
@@ -65,6 +72,28 @@ type Platform interface {
 func Current() Platform { return current }
 
 var current = newPlatform()
+
+// IsRealDirectory reports whether path is a real directory: it exists, is a
+// directory, and is not a link (symlink on Unix, symlink or directory
+// junction on Windows). Junctions are not flagged by os.ModeSymlink, so
+// callers must use this instead of hand-rolled Lstat checks.
+func IsRealDirectory(path string) bool {
+	_, isLink, err := current.ReadLink(path)
+	if err != nil || isLink {
+		return false
+	}
+	fi, err := os.Lstat(path)
+	return err == nil && fi.IsDir() && fi.Mode()&os.ModeSymlink == 0
+}
+
+// IsDirectoryLink reports whether a known link points at a directory. The
+// link's own Lstat entry is useless for this on Windows (a junction reports
+// as an irregular file), so the target is statted instead. A dangling or
+// unreadable target reports false.
+func IsDirectoryLink(linkPath string) bool {
+	info, err := os.Stat(linkPath)
+	return err == nil && info.IsDir()
+}
 
 // LinkType returns the human-readable link type for the current OS.
 func LinkType() string {

@@ -490,3 +490,46 @@ func TestCanceledRollbackKeepsJournalAndCanRetry(t *testing.T) {
 		t.Fatal("successful retry left a journal")
 	}
 }
+func TestCopyRecreatesDirectoryLinkWithoutFollowingIt(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source")
+	external := filepath.Join(root, "external")
+	if err := os.MkdirAll(filepath.Join(source, "nested"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "nested", "value"), []byte("data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(external, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(external, "secret"), []byte("outside"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(source, "alias")
+	if err := platform.Current().CreateLink(link, external); err != nil {
+		t.Skipf("directory links unavailable: %v", err)
+	}
+	dest := filepath.Join(root, "destination")
+	if _, err := CopyTree(source, dest, CopyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := VerifyTree(source, dest, true); err != nil {
+		t.Fatal(err)
+	}
+	dt, isLink, err := platform.Current().ReadLink(filepath.Join(dest, "alias"))
+	if err != nil || !isLink {
+		t.Fatalf("copied link = %q, %v, %v", dt, isLink, err)
+	}
+	if got, err := os.ReadFile(filepath.Join(dest, "alias", "secret")); err != nil || string(got) != "outside" {
+		t.Fatalf("copied link does not resolve to external target: %q, %v", got, err)
+	}
+	snap, err := TreeSnapshot(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, ok := snap["alias"]
+	if !ok || len(entry) < 5 || entry[:5] != "link:" {
+		t.Fatalf("snapshot did not record the link: %#v", snap)
+	}
+}
