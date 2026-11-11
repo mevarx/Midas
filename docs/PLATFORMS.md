@@ -1,7 +1,8 @@
 # Platform validation
 
 The CI workflow runs the native test, vet, and build suites on Windows, Ubuntu,
-and macOS. Tests exercise the host link implementation (Windows junctions or
+and macOS 15 on both arm64 (`macos-15`) and amd64 (`macos-15-intel`) runners.
+Tests exercise the host link implementation (Windows junctions or
 Unix directory symlinks), link removal without deleting the target, temp
 environment redirection, child exit-code propagation, Unix signal forwarding,
 migration, restore, rollback, and recovery ownership. Windows Ctrl+C delivery

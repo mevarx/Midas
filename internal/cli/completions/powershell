@@ -1,0 +1,9 @@
+Register-ArgumentCompleter -Native -CommandName midas -ScriptBlock {
+  param($wordToComplete, $commandAst, $cursorPosition)
+  $commands = @('init','list','move','resume','run','status','restore','rollback','plan','analyze','backup','apps','doctor','completion','shim','version','help')
+  $options = @('--vault','--config','--dry-run','--yes','--json','--verbose','--target','--backup','--backup-dir','--copy-workers','--source','--keep-vault-copy','--force')
+  $choices = if ($commandAst.CommandElements.Count -le 1) { $commands } else { $options }
+  $choices | Where-Object { $_.StartsWith($wordToComplete, [System.StringComparison]::OrdinalIgnoreCase) } | ForEach-Object {
+    [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+  }
+}

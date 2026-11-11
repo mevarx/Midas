@@ -12,8 +12,11 @@ import (
 	"github.com/midas-cli/midas/internal/platform"
 )
 
+const SchemaVersion = 1
+
 // Config is the user configuration stored in config.toml.
 type Config struct {
+	SchemaVersion   int    `toml:"schema_version"`
 	Vault           string `toml:"vault"`
 	Verify          string `toml:"verify"`           // size | hash
 	Confirm         bool   `toml:"confirm"`          // ask before destructive work
@@ -31,6 +34,7 @@ type Config struct {
 // Defaults returns the built-in configuration.
 func Defaults() *Config {
 	return &Config{
+		SchemaVersion:   SchemaVersion,
 		Verify:          "size",
 		Confirm:         true,
 		Backup:          "full",
@@ -74,6 +78,9 @@ func Load(path string) (*Config, error) {
 		}
 		return nil, fmt.Errorf("%s: unknown key(s): %s", path, strings.Join(keys, ", "))
 	}
+	if c.SchemaVersion == 0 {
+		c.SchemaVersion = SchemaVersion
+	}
 	c.Path = path
 	applyEnv(c)
 	if err := c.Validate(); err != nil {
@@ -91,6 +98,9 @@ func applyEnv(c *Config) {
 // Validate checks enumerated values.
 func (c *Config) Validate() error {
 	var errs []error
+	if c.SchemaVersion != SchemaVersion {
+		errs = append(errs, fmt.Errorf("unsupported config schema_version %d (supported: %d)", c.SchemaVersion, SchemaVersion))
+	}
 	switch c.Verify {
 	case "size", "hash":
 	default:
@@ -129,6 +139,12 @@ func validRetention(s string) bool {
 
 // Save writes the config atomically, creating its directory.
 func (c *Config) Save() error {
+	if c.SchemaVersion == 0 {
+		c.SchemaVersion = SchemaVersion
+	}
+	if err := c.Validate(); err != nil {
+		return err
+	}
 	path := c.Path
 	if path == "" {
 		path = DefaultPath()
@@ -139,6 +155,7 @@ func (c *Config) Save() error {
 	}
 	var b strings.Builder
 	b.WriteString("# Midas configuration\n")
+	fmt.Fprintf(&b, "schema_version = %d\n", c.SchemaVersion)
 	fmt.Fprintf(&b, "vault = %s\n", tomlString(c.Vault))
 	fmt.Fprintf(&b, "verify = %s\n", tomlString(c.Verify))
 	fmt.Fprintf(&b, "confirm = %v\n", c.Confirm)

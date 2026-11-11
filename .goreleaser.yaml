@@ -18,6 +18,10 @@ builds:
     ldflags:
       - -s -w
       - -X github.com/midas-cli/midas/internal/version.Version={{ .Version }}
+      - -X github.com/midas-cli/midas/internal/version.Commit={{ .Commit }}
+    flags:
+      - -trimpath
+    mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:
   - id: midas
@@ -30,6 +34,8 @@ archives:
     files:
       - README.md
       - LICENSE
+      - CHANGELOG.md
+      - SECURITY.md
       - docs/*.md
 
 checksum:

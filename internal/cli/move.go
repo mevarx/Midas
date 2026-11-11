@@ -35,6 +35,7 @@ func (c *Ctx) cmdMove(args []string) error {
 	backupDirF := fs.String("backup-dir", "", "backup root for this move")
 	restorePointF := fs.String("restore-point", "", "auto|require|skip")
 	force := fs.Bool("force", false, "move even if the app appears to be running")
+	workers := fs.Int("copy-workers", 1, "bounded copy workers (1-16; default 1)")
 	understood := fs.Bool("i-understand-no-backup", false, "required with --backup=none")
 	if err := fs.Parse(args); err != nil {
 		return failf(ExitUsage, "%v", err)
@@ -44,6 +45,9 @@ func (c *Ctx) cmdMove(args []string) error {
 	}
 	if fs.NArg() != 1 {
 		return failf(ExitUsage, "usage: midas move <app> [--target <name>]")
+	}
+	if *workers < 1 || *workers > 16 {
+		return failf(ExitUsage, "--copy-workers must be between 1 and 16")
 	}
 	appID := fs.Arg(0)
 	vault, err := c.requireVault()
@@ -131,10 +135,11 @@ func (c *Ctx) cmdMove(args []string) error {
 		target    targetInfo
 		bytes     uint64
 		files     int
+		copyBytes uint64
 		backupEst backup.Estimate
 	}
 	items := make([]planItem, 0, len(todo))
-	var sourceBytes, backupBytes uint64
+	var copyBytes, backupBytes uint64
 	rule := def.EffectiveBackupRule()
 	for _, t := range todo {
 		b, f, err := mover.Measure(t.Source)
@@ -151,8 +156,15 @@ func (c *Ctx) cmdMove(args []string) error {
 			}
 			it.backupEst = est
 		}
+		sameVolumeMove, volumeErr := mover.SameVolume(t.Source, vault)
+		if volumeErr != nil {
+			c.UI.Warnf("could not determine volume for %s; space estimate assumes a copy (%v)", t.Name, volumeErr)
+		}
+		if !sameVolumeMove {
+			it.copyBytes = b
+			copyBytes += b
+		}
 		items = append(items, it)
-		sourceBytes += b
 		if it.backupEst.Bytes > 0 {
 			backupBytes += uint64(it.backupEst.Bytes)
 		}
@@ -170,23 +182,25 @@ func (c *Ctx) cmdMove(args []string) error {
 		backupFree = 0
 	}
 	sameVol, _ := mover.SameVolume(vault, backupRoot)
-	needVault := sourceBytes + sourceBytes/10
+	needVault := copyBytes + copyBytes/10
 	needBackup := backupBytes + backupBytes/10
 	if mode == backup.ModeNone {
 		needBackup = 0
 	}
 	var missing []string
-	if needVault > vaultFree {
-		missing = append(missing, fmt.Sprintf("vault needs %s, has %s", ui.FormatBytes(needVault), ui.FormatBytes(vaultFree)))
-	}
 	if needBackup > 0 && sameVol {
 		total := needVault + needBackup
 		if total > vaultFree {
 			missing = append(missing, fmt.Sprintf("vault and backup share a volume and together need %s, available %s",
 				ui.FormatBytes(total), ui.FormatBytes(vaultFree)))
 		}
-	} else if needBackup > backupFree {
-		missing = append(missing, fmt.Sprintf("backup location needs %s, has %s", ui.FormatBytes(needBackup), ui.FormatBytes(backupFree)))
+	} else {
+		if needVault > vaultFree {
+			missing = append(missing, fmt.Sprintf("vault needs %s, has %s", ui.FormatBytes(needVault), ui.FormatBytes(vaultFree)))
+		}
+		if needBackup > backupFree {
+			missing = append(missing, fmt.Sprintf("backup location needs %s, has %s", ui.FormatBytes(needBackup), ui.FormatBytes(backupFree)))
+		}
 	}
 	if len(missing) > 0 {
 		return failf(ExitNoSpace, "not enough space: %s.\nUse --backup-dir on another drive, or deliberately choose --backup=essential (never silently downgraded).", strings.Join(missing, "; "))
@@ -199,6 +213,11 @@ func (c *Ctx) cmdMove(args []string) error {
 		c.UI.Infof("    from %s", it.target.Source)
 		c.UI.Infof("    to   %s", it.target.Dest)
 		c.UI.Infof("    %s in %d files", ui.FormatBytes(it.bytes), it.files)
+		if it.copyBytes == 0 {
+			c.UI.Infof("    destination: same-volume rename (no additional data space estimated)")
+		} else {
+			c.UI.Infof("    destination copy estimate: %s", ui.FormatBytes(it.copyBytes))
+		}
 		switch mode {
 		case backup.ModeNone:
 			c.UI.Infof("    backup: NONE (explicitly confirmed, not recommended)")
@@ -213,7 +232,7 @@ func (c *Ctx) cmdMove(args []string) error {
 	if sameVol && mode != backup.ModeNone {
 		c.UI.Warnf("the backup directory is on the same volume as the vault: one drive failure would destroy both. Use --backup-dir on a different drive.")
 		if mode == backup.ModeFull {
-			c.UI.Infof("  combined space needed on that volume: %s for the vault copy plus %s for the backup",
+			c.UI.Infof("  combined space needed on that volume: %s for cross-volume copies plus %s for the backup",
 				ui.FormatBytes(needVault), ui.FormatBytes(needBackup))
 		}
 	}
@@ -290,16 +309,23 @@ func (c *Ctx) cmdMove(args []string) error {
 		}
 
 		progress := c.UI.NewProgressWithCounts("move "+it.target.Name, int64(it.bytes), it.files)
+		verifyProgress := c.UI.NewProgressWithCounts("verify "+it.target.Name, int64(it.bytes), it.files)
 		if sameVolumeMove, verr := mover.SameVolume(it.target.Source, vault); verr == nil && sameVolumeMove {
 			progress = nil
+			verifyProgress = nil
 		}
 		var progReporter mover.Reporter
 		if progress != nil {
 			progReporter = progress
 		}
+		var verifyReporter mover.Reporter
+		if verifyProgress != nil {
+			verifyReporter = verifyProgress
+		}
 		entry, merr := mover.MoveTarget(mover.MoveOptions{
 			App:               appID,
 			Context:           c.Context,
+			Workers:           *workers,
 			Target:            apps.Target{Name: it.target.Name},
 			Source:            it.target.Source,
 			Dest:              it.target.Dest,
@@ -312,12 +338,16 @@ func (c *Ctx) cmdMove(args []string) error {
 			SourceFiles:       it.files,
 			Manifest:          m,
 			Progress:          progReporter,
+			VerifyProgress:    verifyReporter,
 			Stage:             func(stage, detail string) { c.UI.Verbosef("%s: %s", it.target.Name, detail) },
 			Warn:              func(f string, a ...any) { c.UI.Warnf(f, a...) },
 		})
 		if merr != nil {
 			if progress != nil {
 				progress.Failed()
+			}
+			if verifyProgress != nil {
+				verifyProgress.Failed()
 			}
 			c.Logf("move failed app=%s target=%s: %v", appID, it.target.Name, merr)
 			if errorsIsVerify(merr) {
@@ -327,6 +357,9 @@ func (c *Ctx) cmdMove(args []string) error {
 		}
 		if progress != nil {
 			progress.Done()
+		}
+		if verifyProgress != nil {
+			verifyProgress.Done()
 		}
 		c.UI.Successf("%s/%s moved: %s -> %s", def.ID, it.target.Name, entry.OriginalPath, entry.VaultPath)
 	}

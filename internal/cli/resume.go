@@ -16,6 +16,7 @@ func (c *Ctx) cmdResume(args []string) error {
 	fs.SetOutput(c.UI.Err)
 	vaultF, cfgF, dry, yes, jsonF, verbose := c.addGlobal(fs)
 	force := fs.Bool("force", false, "resume even if the app appears to be running")
+	workers := fs.Int("copy-workers", 1, "bounded copy workers (1-16; default 1)")
 	if err := fs.Parse(args); err != nil {
 		return failf(ExitUsage, "%v", err)
 	}
@@ -24,6 +25,9 @@ func (c *Ctx) cmdResume(args []string) error {
 	}
 	if fs.NArg() != 1 {
 		return failf(ExitUsage, "usage: midas resume <app>")
+	}
+	if *workers < 1 || *workers > 16 {
+		return failf(ExitUsage, "--copy-workers must be between 1 and 16")
 	}
 	appID := fs.Arg(0)
 	vault, err := c.requireVault()
@@ -128,8 +132,8 @@ func (c *Ctx) cmdResume(args []string) error {
 	}
 	_, err = mover.MoveTarget(mover.MoveOptions{
 		App: appID, Target: apps.Target{Name: target.Name}, Resume: true, OperationID: j.OperationID,
-		Context: c.Context,
-		Source:  target.Source, Dest: target.Dest, Vault: vault, Verify: c.Cfg.Verify,
+		Context: c.Context, Workers: *workers,
+		Source: target.Source, Dest: target.Dest, Vault: vault, Verify: c.Cfg.Verify,
 		Force: *force, BackupSet: set, NoBackupConfirmed: j.NoBackup,
 		SourceBytes: bytes, SourceFiles: files, Manifest: m,
 		Warn:  func(f string, a ...any) { c.UI.Warnf(f, a...) },

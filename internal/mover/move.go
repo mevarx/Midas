@@ -22,6 +22,7 @@ type MoveOptions struct {
 	Resume            bool
 	OperationID       string
 	Context           context.Context
+	Workers           int
 	Source            string
 	Dest              string
 	Vault             string
@@ -33,6 +34,7 @@ type MoveOptions struct {
 	SourceFiles       int
 	Manifest          *manifest.Manifest
 	Progress          Reporter
+	VerifyProgress    Reporter
 	Stage             func(stage, detail string)
 	Warn              func(format string, a ...any)
 }
@@ -141,7 +143,8 @@ func MoveTarget(o MoveOptions) (entry manifest.Entry, err error) {
 			rb := RollbackOptions{
 				App: o.App, Target: o.Target.Name, Vault: o.Vault,
 				OperationID: o.OperationID, Context: o.Context,
-				Source: o.Source, Dest: o.Dest, BackupSet: o.BackupSet,
+				Workers: o.Workers,
+				Source:  o.Source, Dest: o.Dest, BackupSet: o.BackupSet,
 				Manifest: o.Manifest, Force: true, Automatic: true,
 				Warn: o.Warn,
 			}
@@ -184,7 +187,7 @@ func MoveTarget(o MoveOptions) (entry manifest.Entry, err error) {
 		if err := MarkOwnedPath(filepath.Dir(partial), partial, operationID, "move-partial"); err != nil {
 			return entry, fmt.Errorf("claim partial path: %w", err)
 		}
-		if _, cerr := CopyTree(o.Source, partial, CopyOptions{Progress: o.Progress, Context: o.Context}); cerr != nil {
+		if _, cerr := CopyTree(o.Source, partial, CopyOptions{Progress: o.Progress, Context: o.Context, Workers: o.Workers}); cerr != nil {
 			return entry, fmt.Errorf("copy failed, original untouched: %w", cerr)
 		}
 		j.State = StateVerifying
@@ -192,7 +195,7 @@ func MoveTarget(o MoveOptions) (entry manifest.Entry, err error) {
 		if err := SaveJournal(o.Vault, j); err != nil {
 			return entry, err
 		}
-		if _, verr := VerifyTree(o.Source, partial, o.Verify == "hash"); verr != nil {
+		if _, verr := VerifyTreeContext(o.Context, o.Source, partial, o.Verify == "hash", o.VerifyProgress); verr != nil {
 			return entry, fmt.Errorf("%w: %v", ErrVerifyFailed, verr)
 		}
 		j.State = StateRenaming

@@ -20,6 +20,7 @@ type RollbackOptions struct {
 	Target      string
 	OperationID string
 	Context     context.Context
+	Workers     int
 	Vault       string
 	Source      string
 	Dest        string
@@ -211,7 +212,7 @@ func Rollback(o RollbackOptions) (rep *RollbackReport, returnErr error) {
 		if err := clearOriginal(o.Source, isLink, rep, o.Force); err != nil {
 			return rep, err
 		}
-		if err := restoreFromSet(o.BackupSet, o.Source, o.Progress, o.Context, operationID); err != nil {
+		if err := restoreFromSet(o.BackupSet, o.Source, o.Progress, o.Context, o.Workers, operationID); err != nil {
 			return rep, err
 		}
 		if problems := verifyRestored(o.Source, o.BackupSet); len(problems) > 0 {
@@ -229,7 +230,7 @@ func Rollback(o RollbackOptions) (rep *RollbackReport, returnErr error) {
 				return rep, err
 			}
 		}
-		if err := placeFromVault(o.Dest, o.Source, rep, o.Progress, o.Context, operationID); err != nil {
+		if err := placeFromVault(o.Dest, o.Source, rep, o.Progress, o.Context, o.Workers, operationID); err != nil {
 			return rep, err
 		}
 		restored = true
@@ -242,7 +243,7 @@ func Rollback(o RollbackOptions) (rep *RollbackReport, returnErr error) {
 		if o.BackupSet == nil {
 			return rep, errors.New("no rollback source available")
 		}
-		if err := restoreFromSet(o.BackupSet, o.Source, o.Progress, o.Context, operationID); err != nil {
+		if err := restoreFromSet(o.BackupSet, o.Source, o.Progress, o.Context, o.Workers, operationID); err != nil {
 			return rep, err
 		}
 		if problems := verifyRestored(o.Source, o.BackupSet); len(problems) > 0 {
@@ -303,7 +304,7 @@ func clearOriginal(source string, isLink bool, rep *RollbackReport, force bool) 
 	return nil
 }
 
-func placeFromVault(dest, source string, rep *RollbackReport, progress Reporter, ctx context.Context, operationID string) error {
+func placeFromVault(dest, source string, rep *RollbackReport, progress Reporter, ctx context.Context, workers int, operationID string) error {
 	if err := os.Rename(dest, source); err == nil {
 		rep.Notes = append(rep.Notes, "the vault copy was moved back (nothing left in the vault)")
 		return nil
@@ -313,7 +314,7 @@ func placeFromVault(dest, source string, rep *RollbackReport, progress Reporter,
 	if err := MarkOwnedPath(filepath.Dir(partial), partial, operationID, "rollback-partial"); err != nil {
 		return err
 	}
-	if _, err := CopyTree(dest, partial, CopyOptions{Progress: progress, Context: ctx}); err != nil {
+	if _, err := CopyTree(dest, partial, CopyOptions{Progress: progress, Context: ctx, Workers: workers}); err != nil {
 		return fmt.Errorf("copy vault data to recovery path %q: %w (vault copy intact at %s)", partial, err, dest)
 	}
 	if _, err := VerifyTree(dest, partial, true); err != nil {
@@ -329,7 +330,7 @@ func placeFromVault(dest, source string, rep *RollbackReport, progress Reporter,
 	return nil
 }
 
-func restoreFromSet(s *backup.Set, source string, progress Reporter, ctx context.Context, operationID string) error {
+func restoreFromSet(s *backup.Set, source string, progress Reporter, ctx context.Context, workers int, operationID string) error {
 	if err := os.MkdirAll(filepath.Dir(source), 0o755); err != nil {
 		return err
 	}
@@ -337,7 +338,7 @@ func restoreFromSet(s *backup.Set, source string, progress Reporter, ctx context
 	if err := MarkOwnedPath(filepath.Dir(partial), partial, operationID, "rollback-partial"); err != nil {
 		return err
 	}
-	if _, err := CopyTree(s.FilesDir(), partial, CopyOptions{Progress: progress, Context: ctx}); err != nil {
+	if _, err := CopyTree(s.FilesDir(), partial, CopyOptions{Progress: progress, Context: ctx, Workers: workers}); err != nil {
 		return fmt.Errorf("restore from backup %s: %w", s.ID, err)
 	}
 	if _, err := VerifyTree(s.FilesDir(), partial, true); err != nil {

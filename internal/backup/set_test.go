@@ -63,3 +63,17 @@ func TestCreatingBackupCannotBeDeleted(t *testing.T) {
 		t.Fatalf("protected backup changed: %q, %v", got, err)
 	}
 }
+
+func TestLoadSetRejectsUnknownMetadataFields(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "app", "set")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	data := []byte(`{"schema":1,"id":"set","app":"app","target":"target","mode":"full","state":"verified","files":[],"skipped":[],"future_recovery_field":true}`)
+	if err := os.WriteFile(filepath.Join(dir, "BACKUP.json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadSet(dir); err == nil {
+		t.Fatal("unknown backup metadata field was silently discarded")
+	}
+}

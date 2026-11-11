@@ -1,7 +1,9 @@
 package mover
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -120,6 +122,26 @@ func TestJournalIdentityAndCorruptScan(t *testing.T) {
 	}
 }
 
+func TestJournalScanRejectsUnknownRecoveryFields(t *testing.T) {
+	vault := t.TempDir()
+	dir := filepath.Join(vault, ".midas", "journal")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	data := []byte(`{"schema":1,"app":"app","target":"target","state":"copying","operation":"move","source":"/tmp/source","dest":"` + filepath.Join(vault, "apps", "app", "target") + `","partial":"` + filepath.Join(vault, "apps", "app", "target.midas-partial") + `","bak":"/tmp/source.midas-bak","no_backup_confirmed":true,"future_recovery_field":true}`)
+	if err := os.WriteFile(filepath.Join(dir, "app-target.json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	journals, issues, err := ScanJournals(vault)
+	if err != nil || len(journals) != 0 || len(issues) != 1 {
+		t.Fatalf("scan = %d journals, %d issues, %v", len(journals), len(issues), err)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "app-target.json"))
+	if err != nil || string(got) != string(data) {
+		t.Fatalf("unknown journal was not preserved: %v", err)
+	}
+}
+
 func TestTreeSnapshotDetectsSameSizeMutation(t *testing.T) {
 	root := t.TempDir()
 	file := filepath.Join(root, "state")
@@ -172,6 +194,78 @@ func TestCopyPreservesRelativeDirectoryLinkWithinTree(t *testing.T) {
 	}
 	if got, err := os.ReadFile(filepath.Join(dest, "alias", "value")); err != nil || string(got) != "data" {
 		t.Fatalf("copied relative link did not resolve within destination: %q, %v", got, err)
+	}
+}
+
+func TestConcurrentCopyMatchesSequentialCopy(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source")
+	if err := os.MkdirAll(filepath.Join(source, "nested"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 64 {
+		data := bytes.Repeat([]byte{byte(i)}, 8192+i*17)
+		if err := os.WriteFile(filepath.Join(source, "nested", fmt.Sprintf("%03d", i)), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sequential := filepath.Join(root, "sequential")
+	concurrent := filepath.Join(root, "concurrent")
+	seqStats, err := CopyTree(source, sequential, CopyOptions{Workers: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conStats, err := CopyTree(source, concurrent, CopyOptions{Workers: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seqStats != conStats {
+		t.Fatalf("copy stats differ: sequential=%+v concurrent=%+v", seqStats, conStats)
+	}
+	if _, err := VerifyTree(sequential, concurrent, true); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCopyRejectsUnboundedWorkerCount(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source")
+	if err := os.Mkdir(source, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CopyTree(source, filepath.Join(root, "dest"), CopyOptions{Workers: 17}); err == nil {
+		t.Fatal("copy accepted worker count above its bound")
+	}
+}
+
+type cancelOnProgress struct{ cancel context.CancelFunc }
+
+func (p cancelOnProgress) Add(int64) { p.cancel() }
+
+func TestConcurrentCopyCancellationStopsWorkersAndPreservesPartial(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source")
+	if err := os.Mkdir(source, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	data := make([]byte, 8<<20)
+	for i := range 12 {
+		if err := os.WriteFile(filepath.Join(source, fmt.Sprintf("%02d", i)), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	dest := filepath.Join(root, "partial")
+	_, err := CopyTree(source, dest, CopyOptions{Context: ctx, Workers: 4, Progress: cancelOnProgress{cancel}})
+	cancel()
+	if err == nil {
+		t.Fatal("concurrent canceled copy unexpectedly succeeded")
+	}
+	if !PathExists(dest) {
+		t.Fatal("canceled concurrent copy did not preserve its partial tree")
+	}
+	if _, err := TreeSnapshot(source); err != nil {
+		t.Fatalf("source tree changed during canceled copy: %v", err)
 	}
 }
 

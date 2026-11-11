@@ -3,9 +3,11 @@
 package manifest
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -93,8 +95,13 @@ func Load(vault string) (*Manifest, error) {
 		return nil, err
 	}
 	var m Manifest
-	if err := json.Unmarshal(data, &m); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&m); err != nil {
 		return nil, fmt.Errorf("manifest is corrupt (%s): %w; run `midas doctor`", path, err)
+	}
+	if err := ensureJSONEOF(decoder); err != nil {
+		return nil, fmt.Errorf("manifest has trailing data (%s): %w", path, err)
 	}
 	if m.Schema == 0 {
 		m.Schema = SchemaVersion
@@ -106,6 +113,16 @@ func Load(vault string) (*Manifest, error) {
 		return nil, fmt.Errorf("manifest contains unsafe metadata: %w; preserve it and run `midas doctor`", err)
 	}
 	return &m, nil
+}
+
+func ensureJSONEOF(decoder *json.Decoder) error {
+	var extra any
+	if err := decoder.Decode(&extra); err == nil {
+		return errors.New("unexpected extra JSON value")
+	} else if !errors.Is(err, io.EOF) {
+		return err
+	}
+	return nil
 }
 
 // Save writes the manifest atomically and keeps the previous file as .bak.

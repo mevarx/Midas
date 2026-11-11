@@ -31,7 +31,9 @@ From source (Go 1.26+):
 go install github.com/midas-cli/midas/cmd/midas@latest
 ```
 
-Or download a release binary for windows/linux/darwin (amd64 or arm64). No admin rights are needed for normal use.
+Or download a checksum-verified release binary for Windows/Linux/macOS
+(amd64 or arm64). See [docs/INSTALL.md](docs/INSTALL.md) for checksum
+verification, upgrades, and uninstall. No admin rights are needed for normal use.
 
 ## Quickstart
 
@@ -84,6 +86,8 @@ Or download a release binary for windows/linux/darwin (amd64 or arm64). No admin
 | `midas list` | Apps, targets, sizes, moved/not-moved state |
 | `midas move <app>` | Move targets into the vault and create links |
 | `midas resume <app>` | Safely restart an owned, interrupted copy checkpoint |
+| `midas plan <app>` | Read-only estimates, conflicts, and proposed transitions |
+| `midas analyze <app>` | Read-only target and move-readiness analysis |
 | `midas run <app> -- <cmd>` | Launch with temp redirected to the vault |
 | `midas status` | Live link/vault health; `--json` for scripts |
 | `midas restore <app>` | Move data back after a successful move |
@@ -91,9 +95,11 @@ Or download a release binary for windows/linux/darwin (amd64 or arm64). No admin
 | `midas backup list/show/verify/delete` | Manage backup sets |
 | `midas apps list/show/validate/path` | Inspect app definitions |
 | `midas doctor` | Read-only health and recovery report; `--repair` is explicit |
+| `midas completion <shell>` | Print Bash, Zsh, Fish, or PowerShell completions |
 | `midas shim <app>` | Wrapper that auto-applies `run` |
 
 Global flags: `--vault`, `--config`, `--dry-run`, `--yes`, `--json`, `--verbose`.
+Move/restore/rollback/resume accept `--copy-workers 1..16`; the default is 1.
 
 Exit codes: `0` ok, `1` error, `2` usage, `3` app running, `4` insufficient space, `5` vault unreachable, `6` verification failed, `7` unhealthy, `8` backup/restore-point failed, `9` backup is protected.
 
@@ -144,6 +150,15 @@ midas apps validate ./my-app.toml
 - [docs/SAFETY.md](docs/SAFETY.md) — what is guaranteed and manual recovery
 - [docs/RECOVERY.md](docs/RECOVERY.md) — diagnosis, resume eligibility and recovery steps
 - [docs/PLATFORMS.md](docs/PLATFORMS.md) — native CI coverage and platform limitations
+- [docs/INSTALL.md](docs/INSTALL.md) — checksum verification, upgrade, uninstall
+- [docs/CONFIGURATION.md](docs/CONFIGURATION.md) — config keys and schema version
+- [docs/COMMANDS.md](docs/COMMANDS.md) — command and exit-code reference
+- [docs/JSON.md](docs/JSON.md) — versioned machine-readable output
+- [docs/PERFORMANCE.md](docs/PERFORMANCE.md) — copy benchmarks and methodology
+- [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) — format and platform policy
+- [docs/RELEASE.md](docs/RELEASE.md) — release gates and qualification checklist
+- [docs/SUPPORT.md](docs/SUPPORT.md) — support and maintenance boundaries
+- [SECURITY.md](SECURITY.md) — private vulnerability reporting
 - [docs/ADDING_AN_APP.md](docs/ADDING_AN_APP.md) — definition format
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 

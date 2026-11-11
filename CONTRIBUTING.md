@@ -6,7 +6,7 @@ macOS, and Linux**.
 
 ## Ground rules
 
-- The PRD (`PRD-v1.2.md`) is the source of truth.
+- Keep behavior aligned with `PRD-v1.2.md` and the milestone/master PRD.
 - Never hardcode app names or paths in Go. They belong in `apps/*.toml`.
 - All OS-specific code stays in `internal/platform`, behind the `Platform`
   interface.
@@ -22,6 +22,7 @@ go build ./...
 go vet ./...
 go test ./...        # adds real temp-directory integration tests
 gofmt -l ./cmd ./internal ./apps
+go test ./internal/mover ./internal/backup -run '^$' -bench 'Benchmark(CopyVerify|BackupSetVerify)$' -benchmem
 ```
 
 Run the CLI locally without installing:
@@ -40,6 +41,9 @@ See [docs/ADDING_AN_APP.md](docs/ADDING_AN_APP.md). Validate with:
 ```
 go run ./cmd/midas apps validate apps/my-app.toml
 ```
+
+Shell completions are static and do not scan app definitions on each keypress:
+`midas completion bash|zsh|fish|powershell` prints the corresponding script.
 
 ## Commit style
 

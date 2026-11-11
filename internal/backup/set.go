@@ -3,11 +3,13 @@
 package backup
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -170,7 +172,15 @@ func LoadSet(dir string) (*Set, error) {
 		return nil, err
 	}
 	var s Set
-	if err := json.Unmarshal(data, &s); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&s); err != nil {
+		return nil, fmt.Errorf("corrupt BACKUP.json in %s: %w", dir, err)
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err == nil {
+		return nil, fmt.Errorf("corrupt BACKUP.json in %s: unexpected trailing value", dir)
+	} else if !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("corrupt BACKUP.json in %s: %w", dir, err)
 	}
 	s.Dir = dir

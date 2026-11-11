@@ -3,9 +3,11 @@
 package mover
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -99,14 +101,14 @@ func LoadJournal(vault, app, target string) (*Journal, error) {
 		}
 		return nil, err
 	}
-	var j Journal
-	if err := json.Unmarshal(data, &j); err != nil {
+	j, err := decodeJournal(data)
+	if err != nil {
 		return nil, fmt.Errorf("journal for %s/%s is unreadable: %w", app, target, err)
 	}
-	if err := validateJournal(vault, &j, app, target); err != nil {
+	if err := validateJournal(vault, j, app, target); err != nil {
 		return nil, fmt.Errorf("journal for %s/%s is invalid: %w", app, target, err)
 	}
-	return &j, nil
+	return j, nil
 }
 
 // SaveJournal writes the journal atomically.
@@ -204,16 +206,32 @@ func ScanJournals(vault string) ([]*Journal, []string, error) {
 			issues = append(issues, path)
 			continue
 		}
-		var j Journal
-		if err := json.Unmarshal(data, &j); err != nil || validateJournal(vault, &j, j.App, j.Target) != nil || JournalPath(vault, j.App, j.Target) != path {
+		j, decodeErr := decodeJournal(data)
+		if decodeErr != nil || validateJournal(vault, j, j.App, j.Target) != nil || JournalPath(vault, j.App, j.Target) != path {
 			issues = append(issues, path)
 			continue
 		}
-		out = append(out, &j)
+		out = append(out, j)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt.After(out[j].UpdatedAt) })
 	sort.Strings(issues)
 	return out, issues, nil
+}
+
+func decodeJournal(data []byte) (*Journal, error) {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	var journal Journal
+	if err := decoder.Decode(&journal); err != nil {
+		return nil, err
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err == nil {
+		return nil, errors.New("unexpected trailing JSON value")
+	} else if !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+	return &journal, nil
 }
 
 func validateJournalDirs(vault string, create bool) error {
