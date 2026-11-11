@@ -1,6 +1,7 @@
 package mover
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -18,6 +19,9 @@ import (
 type MoveOptions struct {
 	App               string
 	Target            apps.Target
+	Resume            bool
+	OperationID       string
+	Context           context.Context
 	Source            string
 	Dest              string
 	Vault             string
@@ -43,33 +47,77 @@ func MoveTarget(o MoveOptions) (entry manifest.Entry, err error) {
 	if o.BackupSet != nil && o.BackupSet.State != backup.StateVerified && o.BackupSet.State != backup.StateInUse {
 		return entry, fmt.Errorf("refusing to move: backup set is %s, not verified", o.BackupSet.State)
 	}
+	if o.BackupSet != nil {
+		if err := backup.Verify(o.BackupSet); err != nil {
+			return entry, fmt.Errorf("refusing to move with an invalid safety backup: %w", err)
+		}
+	}
 	if o.Manifest == nil {
 		return entry, errors.New("move requires a manifest")
 	}
+	sourceSnapshot, err := TreeSnapshot(o.Source)
+	if err != nil {
+		return entry, fmt.Errorf("inspect source before moving: %w", err)
+	}
 	if o.Stage == nil {
 		o.Stage = func(string, string) {}
+	}
+	if o.Context == nil {
+		o.Context = context.Background()
 	}
 	if o.Warn == nil {
 		o.Warn = func(string, ...any) {}
 	}
 	parent := filepath.Dir(o.Dest)
-	if err := os.MkdirAll(parent, 0o755); err != nil {
-		return entry, fmt.Errorf("create vault app directory: %w", err)
+	if err := EnsureVaultAppDir(o.Vault, o.App); err != nil {
+		return entry, fmt.Errorf("validate vault app directory: %w", err)
 	}
 	if PathExists(o.Dest) {
 		return entry, fmt.Errorf("destination %q already exists; refusing to overwrite", o.Dest)
 	}
 	bak := o.Source + ".midas-bak"
 	partial := o.Dest + ".midas-partial"
-	if PathExists(bak) {
+	if PathExists(bak) || PathExists(ownerPath(bak)) {
 		return entry, fmt.Errorf("a previous backup exists at %q; run `midas doctor` first", bak)
 	}
-	if err := os.RemoveAll(partial); err != nil {
-		return entry, err
+	journal, err := LoadJournal(o.Vault, o.App, o.Target.Name)
+	if err != nil {
+		return entry, fmt.Errorf("inspect existing journal: %w", err)
+	}
+	operationID := o.OperationID
+	if journal != nil {
+		if !o.Resume {
+			return entry, fmt.Errorf("an operation journal already exists for %s/%s; run `midas doctor` or `midas resume %s`", o.App, o.Target.Name, o.App)
+		}
+		if journal.Operation != "move" || (journal.State != StateCopying && journal.State != StateVerifying) || !validOperationID(journal.OperationID) || !platform.SamePath(journal.Source, o.Source) || !platform.SamePath(journal.Dest, o.Dest) || journal.BackupID != backupID(o.BackupSet) || journal.NoBackup != o.NoBackupConfirmed {
+			return entry, fmt.Errorf("journal state or paths are not eligible for safe resume; preserve all copies and use `midas rollback %s`", o.App)
+		}
+		if !moverRealDirectory(o.Source) || PathExists(o.Dest) {
+			return entry, fmt.Errorf("source/destination state is not safe for resume; no paths were changed")
+		}
+		if PathExists(partial) || PathExists(ownerPath(partial)) {
+			if err := RemoveOwnedPath(filepath.Dir(partial), partial, journal.OperationID, "move-partial"); err != nil {
+				return entry, fmt.Errorf("cannot safely restart the partial copy: %w", err)
+			}
+		}
+		operationID = journal.OperationID
+	} else {
+		if o.Resume {
+			return entry, fmt.Errorf("no resumable move journal exists for %s/%s", o.App, o.Target.Name)
+		}
+		if PathExists(partial) || PathExists(ownerPath(partial)) {
+			return entry, fmt.Errorf("partial path %q already exists; preserving it; run `midas doctor` to inspect recovery state", partial)
+		}
+		if operationID == "" {
+			operationID, err = NewOperationID()
+			if err != nil {
+				return entry, err
+			}
+		}
 	}
 
 	j := &Journal{
-		App: o.App, Target: o.Target.Name, State: StateCopying,
+		OperationID: operationID, Operation: "move", App: o.App, Target: o.Target.Name, State: StateCopying, NoBackup: o.NoBackupConfirmed,
 		Source: o.Source, Dest: o.Dest, Partial: partial, Bak: bak,
 	}
 	if o.BackupSet != nil {
@@ -81,8 +129,18 @@ func MoveTarget(o MoveOptions) (entry manifest.Entry, err error) {
 	success := false
 	defer func() {
 		if err != nil && !success {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				j.State = StateCopying
+				if saveErr := SaveJournal(o.Vault, j); saveErr != nil {
+					err = fmt.Errorf("%w; cancellation state could not be journaled: %v", err, saveErr)
+				} else {
+					err = fmt.Errorf("operation canceled; original and owned partial data were preserved; inspect with `midas doctor` or retry `midas resume %s`: %w", o.App, err)
+				}
+				return
+			}
 			rb := RollbackOptions{
 				App: o.App, Target: o.Target.Name, Vault: o.Vault,
+				OperationID: o.OperationID, Context: o.Context,
 				Source: o.Source, Dest: o.Dest, BackupSet: o.BackupSet,
 				Manifest: o.Manifest, Force: true, Automatic: true,
 				Warn: o.Warn,
@@ -123,7 +181,10 @@ func MoveTarget(o MoveOptions) (entry manifest.Entry, err error) {
 		}
 	} else {
 		o.Stage(StateCopying, "copying")
-		if _, cerr := CopyTree(o.Source, partial, CopyOptions{Progress: o.Progress}); cerr != nil {
+		if err := MarkOwnedPath(filepath.Dir(partial), partial, operationID, "move-partial"); err != nil {
+			return entry, fmt.Errorf("claim partial path: %w", err)
+		}
+		if _, cerr := CopyTree(o.Source, partial, CopyOptions{Progress: o.Progress, Context: o.Context}); cerr != nil {
 			return entry, fmt.Errorf("copy failed, original untouched: %w", cerr)
 		}
 		j.State = StateVerifying
@@ -142,6 +203,18 @@ func MoveTarget(o MoveOptions) (entry manifest.Entry, err error) {
 		if err := os.Rename(partial, o.Dest); err != nil {
 			return entry, fmt.Errorf("rename partial copy into place: %w", err)
 		}
+		if err := ForgetOwnership(filepath.Dir(partial), partial, operationID, "move-partial"); err != nil {
+			return entry, fmt.Errorf("verified destination committed but ownership metadata could not be cleared: %w", err)
+		}
+	}
+	if !sameVolume {
+		committedSnapshot, err := TreeSnapshot(o.Dest)
+		if err != nil || !SameTreeSnapshot(sourceSnapshot, committedSnapshot) {
+			if err != nil {
+				return entry, fmt.Errorf("could not verify source stability after move: %w", err)
+			}
+			return entry, fmt.Errorf("source changed during move; the operation was not committed")
+		}
 	}
 
 	// Steps 6-7: swap the original aside and link it. On the same volume the
@@ -153,7 +226,11 @@ func MoveTarget(o MoveOptions) (entry manifest.Entry, err error) {
 		return entry, err
 	}
 	if !sameVolume {
+		if err := MarkOwnedPath(filepath.Dir(bak), bak, operationID, "move-original"); err != nil {
+			return entry, fmt.Errorf("claim original backup path: %w", err)
+		}
 		if err := os.Rename(o.Source, bak); err != nil {
+			_ = ForgetOwnership(filepath.Dir(bak), bak, operationID, "move-original")
 			return entry, fmt.Errorf("rename original to %q (files in use?): %w", bak, err)
 		}
 	}
@@ -174,6 +251,7 @@ func MoveTarget(o MoveOptions) (entry manifest.Entry, err error) {
 	entry = manifest.Entry{
 		App:          o.App,
 		Target:       o.Target.Name,
+		OperationID:  operationID,
 		OriginalPath: o.Source,
 		VaultPath:    o.Dest,
 		LinkType:     platform.LinkType(),
@@ -209,8 +287,10 @@ func MoveTarget(o MoveOptions) (entry manifest.Entry, err error) {
 	// Step 11: drop the untouched original.
 	j.State = StateCleanup
 	_ = SaveJournal(o.Vault, j)
-	if err := os.RemoveAll(bak); err != nil {
-		o.Warn("could not remove %s (%v); it is safe to delete by hand or with `midas doctor`", bak, err)
+	if PathExists(bak) {
+		if err := RemoveOwnedPath(filepath.Dir(bak), bak, operationID, "move-original"); err != nil {
+			o.Warn("could not remove %s (%v); it is safe to delete by hand or with `midas doctor`", bak, err)
+		}
 	}
 
 	// Step 12: finish.
@@ -229,4 +309,16 @@ func MoveTarget(o MoveOptions) (entry manifest.Entry, err error) {
 	}
 	success = true
 	return entry, nil
+}
+
+func backupID(s *backup.Set) string {
+	if s == nil {
+		return ""
+	}
+	return s.ID
+}
+
+func moverRealDirectory(path string) bool {
+	info, err := os.Lstat(path)
+	return err == nil && info.IsDir() && info.Mode()&os.ModeSymlink == 0
 }

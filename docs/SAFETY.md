@@ -12,10 +12,10 @@ guarantees, what it does not, and how to recover by hand.
 2. **A verified backup first.** No code path starts moving data without a
    backup set in `verified` state, unless the user typed
    `--backup=none --i-understand-no-backup` and the phrase `no backup`.
-3. **Automatic rollback.** Any failure or interruption after the safety net
-   runs the rollback routine before the command returns. If rollback itself
-   fails, Midas stops and prints the exact locations of the original, the vault
-   copy, and the backup set.
+3. **Recoverable interruption.** Operational failures attempt rollback. A
+   Ctrl+C or termination during a copy leaves the original, owned partial,
+   backup, and journal in place; `midas doctor` reports the checkpoint and
+   `midas resume` is offered only when its paths and backup validate.
 4. **Reversibility.** `midas restore` reverses a completed move. The vault copy
    is removed only after the restored tree is verified.
 5. **Protected backups.** A backup set in `creating`, `verified` or `in-use`
@@ -68,14 +68,15 @@ During a move these paths may exist:
 |---|---|
 | `<original>` | Either the real data (untouched), or a link after success |
 | `<original>.midas-bak` | The untouched original, moved aside before linking |
-| `<original>.midas-partial` | Incomplete restore copy (safe to delete) |
+| `<original>.midas-partial` | Incomplete restore/rollback copy; preserve until its journal and ownership are validated |
 | `<vault>/apps/<app>/<target>` | Verified vault copy |
-| `<vault>/apps/<app>/<target>.midas-partial` | Incomplete move copy (safe to delete) |
+| `<vault>/apps/<app>/<target>.midas-partial` | Incomplete move copy; unknown or mismatched ownership is never cleaned automatically |
 | `<vault>/.midas/journal/<app>-<target>.json` | In-progress move state |
 | `<backup>/<app>/<id>/files/` | Mirrored backup; usable without Midas |
 
-Never delete `<original>.midas-bak` before the link is healthy. If in doubt,
-copy it somewhere else first.
+Never delete `<original>.midas-bak` before the link is healthy. Do not delete
+partial paths based on their suffix; if ownership cannot be proven, preserve
+them and review [RECOVERY.md](RECOVERY.md).
 
 ## Reporting a data-loss bug
 

@@ -9,8 +9,51 @@ permissions:
   contents: write
 
 jobs:
-  goreleaser:
+  validate:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Format check
+        if: runner.os == 'Linux'
+        run: test -z "$(gofmt -l ./cmd ./internal ./apps)"
+      - run: go mod verify
+      - run: go vet ./...
+      - run: go test ./...
+      - run: go build ./...
+
+  cross-compile:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build every release target
+        run: |
+          for goos in windows linux darwin; do
+            for goarch in amd64 arm64; do
+              GOOS=$goos GOARCH=$goarch go build ./...
+            done
+          done
+
+  goreleaser:
+    needs: [validate, cross-compile]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:

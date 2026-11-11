@@ -7,5 +7,8 @@ import (
 )
 
 func main() {
-	os.Exit(cli.Run(os.Args[1:]))
+	ctx, stop := cli.InterruptContext()
+	code := cli.RunContext(os.Args[1:], ctx)
+	stop()
+	os.Exit(code)
 }

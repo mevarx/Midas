@@ -1,6 +1,7 @@
 package mover
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -15,16 +16,18 @@ import (
 
 // RollbackOptions describes a rollback of one app/target.
 type RollbackOptions struct {
-	App       string
-	Target    string
-	Vault     string
-	Source    string
-	Dest      string
-	BackupSet *backup.Set
-	Manifest  *manifest.Manifest
-	Force     bool
-	DryRun    bool
-	Automatic bool
+	App         string
+	Target      string
+	OperationID string
+	Context     context.Context
+	Vault       string
+	Source      string
+	Dest        string
+	BackupSet   *backup.Set
+	Manifest    *manifest.Manifest
+	Force       bool
+	DryRun      bool
+	Automatic   bool
 	// Prefer forces a source: auto, bak, vault or backup.
 	Prefer   string
 	Warn     func(format string, a ...any)
@@ -42,11 +45,14 @@ type RollbackReport struct {
 
 // Rollback restores an app target to its pre-move state, preferring the
 // untouched original, then the vault copy, then the backup set.
-func Rollback(o RollbackOptions) (*RollbackReport, error) {
+func Rollback(o RollbackOptions) (rep *RollbackReport, returnErr error) {
 	if o.Warn == nil {
 		o.Warn = func(string, ...any) {}
 	}
-	rep := &RollbackReport{}
+	if err := EnsureVaultAppDir(o.Vault, o.App); err != nil {
+		return nil, fmt.Errorf("validate vault app directory: %w", err)
+	}
+	rep = &RollbackReport{}
 	bak := o.Source + ".midas-bak"
 	partial := o.Dest + ".midas-partial"
 
@@ -103,18 +109,88 @@ func Rollback(o RollbackOptions) (*RollbackReport, error) {
 			rep.Notes = append(rep.Notes, "an essential backup does not contain every file; the list above was not covered")
 		}
 	}
+	if o.BackupSet != nil && rep.SourceUsed == "the backup set "+o.BackupSet.ID {
+		if err := backup.Verify(o.BackupSet); err != nil {
+			return rep, fmt.Errorf("refusing to restore from an invalid backup set: %w", err)
+		}
+	}
 	if o.DryRun {
 		rep.Notes = append(rep.Notes, "dry run: nothing was changed")
 		return rep, nil
 	}
-
-	// Scratch partial copies are always safe to remove: they were never the
-	// only copy of anything.
-	if PathExists(partial) {
-		if err := RemoveAllOwned(partial); err != nil {
-			return rep, fmt.Errorf("remove partial copy %q: %w", partial, err)
+	if o.Context == nil {
+		o.Context = context.Background()
+	}
+	rollbackPartial := o.Source + ".midas-partial"
+	journal, err := LoadJournal(o.Vault, o.App, o.Target)
+	if err != nil {
+		return rep, fmt.Errorf("inspect operation journal before rollback: %w", err)
+	}
+	parentOperationID := ""
+	previousOperationID := ""
+	if journal != nil {
+		if !platform.SamePath(journal.Source, o.Source) || !platform.SamePath(journal.Dest, o.Dest) {
+			return rep, errors.New("journal paths do not match the requested rollback; preserve all copies")
 		}
-		rep.Notes = append(rep.Notes, "removed the incomplete partial copy")
+		previousOperationID = journal.OperationID
+		parentOperationID = journal.OperationID
+		if journal.Operation == "rollback" && journal.ParentOperationID != "" {
+			parentOperationID = journal.ParentOperationID
+		}
+	}
+	operationID := o.OperationID
+	if operationID == "" || operationID == parentOperationID {
+		operationID, err = NewOperationID()
+		if err != nil {
+			return rep, err
+		}
+	}
+	if journal == nil {
+		journal = &Journal{App: o.App, Target: o.Target}
+	}
+	if PathExists(rollbackPartial) || PathExists(ownerPath(rollbackPartial)) {
+		if journal.Operation != "rollback" || !validOperationID(previousOperationID) || (srcExists && !isLink) || (!destExists && o.BackupSet == nil) {
+			return rep, fmt.Errorf("partial restore path %q cannot be matched to a recoverable rollback; preserving it", rollbackPartial)
+		}
+		if err := ValidateOwnedPath(filepath.Dir(rollbackPartial), rollbackPartial, previousOperationID, "rollback-partial"); err != nil {
+			return rep, fmt.Errorf("partial restore ownership cannot be proven; preserving %s: %w", rollbackPartial, err)
+		}
+		if err := RemoveOwnedPath(filepath.Dir(rollbackPartial), rollbackPartial, previousOperationID, "rollback-partial"); err != nil {
+			return rep, fmt.Errorf("cannot restart interrupted rollback from %s: %w", rollbackPartial, err)
+		}
+	}
+	journal.ParentOperationID = parentOperationID
+	journal.OperationID = operationID
+	journal.Operation = "rollback"
+	journal.State = StateRollingBack
+	journal.Source = o.Source
+	journal.Dest = o.Dest
+	journal.Partial = rollbackPartial
+	journal.Bak = bak
+	if o.BackupSet != nil {
+		journal.BackupID = o.BackupSet.ID
+	}
+	if err := SaveJournal(o.Vault, journal); err != nil {
+		return rep, fmt.Errorf("write rollback journal: %w", err)
+	}
+	journalActive := true
+	defer func() {
+		if journalActive && returnErr != nil {
+			if errors.Is(returnErr, context.Canceled) || errors.Is(returnErr, context.DeadlineExceeded) {
+				journal.State = StateNeedsRecovery
+			}
+			if saveErr := SaveJournal(o.Vault, journal); saveErr != nil {
+				returnErr = fmt.Errorf("%w; rollback state could not be journaled: %v", returnErr, saveErr)
+			}
+		}
+	}()
+	if err := o.Context.Err(); err != nil {
+		return rep, err
+	}
+
+	// Unknown partials may contain the only recoverable copy; preserve them.
+	if PathExists(partial) {
+		rep.Notes = append(rep.Notes, "preserved the partial copy at "+partial+"; inspect it before cleanup")
 	}
 
 	restored := false
@@ -126,13 +202,16 @@ func Rollback(o RollbackOptions) (*RollbackReport, error) {
 		if err := os.Rename(bak, o.Source); err != nil {
 			return rep, fmt.Errorf("restore %q from .midas-bak: %w (the original is intact at %s)", o.Source, err, bak)
 		}
+		if parentOperationID != "" {
+			_ = ForgetOwnership(filepath.Dir(bak), bak, parentOperationID, "move-original")
+		}
 		restored = true
 
 	case prefer == "backup":
 		if err := clearOriginal(o.Source, isLink, rep, o.Force); err != nil {
 			return rep, err
 		}
-		if err := restoreFromSet(o.BackupSet, o.Source, o.Progress); err != nil {
+		if err := restoreFromSet(o.BackupSet, o.Source, o.Progress, o.Context, operationID); err != nil {
 			return rep, err
 		}
 		if problems := verifyRestored(o.Source, o.BackupSet); len(problems) > 0 {
@@ -150,7 +229,7 @@ func Rollback(o RollbackOptions) (*RollbackReport, error) {
 				return rep, err
 			}
 		}
-		if err := placeFromVault(o.Dest, o.Source, rep, o.Progress); err != nil {
+		if err := placeFromVault(o.Dest, o.Source, rep, o.Progress, o.Context, operationID); err != nil {
 			return rep, err
 		}
 		restored = true
@@ -163,7 +242,7 @@ func Rollback(o RollbackOptions) (*RollbackReport, error) {
 		if o.BackupSet == nil {
 			return rep, errors.New("no rollback source available")
 		}
-		if err := restoreFromSet(o.BackupSet, o.Source, o.Progress); err != nil {
+		if err := restoreFromSet(o.BackupSet, o.Source, o.Progress, o.Context, operationID); err != nil {
 			return rep, err
 		}
 		if problems := verifyRestored(o.Source, o.BackupSet); len(problems) > 0 {
@@ -189,8 +268,14 @@ func Rollback(o RollbackOptions) (*RollbackReport, error) {
 			}
 		}
 	}
+	journal.State = StateRolledBack
+	if err := SaveJournal(o.Vault, journal); err != nil {
+		return rep, fmt.Errorf("rollback completed but final journal state could not be saved: %w", err)
+	}
 	if err := RemoveJournal(o.Vault, o.App, o.Target); err != nil {
 		o.Warn("could not remove journal: %v", err)
+	} else {
+		journalActive = false
 	}
 	rep.Notes = append(rep.Notes,
 		"the backup set and any vault copy were kept; Midas never deletes them here")
@@ -218,25 +303,51 @@ func clearOriginal(source string, isLink bool, rep *RollbackReport, force bool) 
 	return nil
 }
 
-func placeFromVault(dest, source string, rep *RollbackReport, progress Reporter) error {
+func placeFromVault(dest, source string, rep *RollbackReport, progress Reporter, ctx context.Context, operationID string) error {
 	if err := os.Rename(dest, source); err == nil {
 		rep.Notes = append(rep.Notes, "the vault copy was moved back (nothing left in the vault)")
 		return nil
 	}
-	// Cross-volume: copy back, then keep the vault copy.
-	if _, err := CopyTree(dest, source, CopyOptions{Progress: progress}); err != nil {
-		return fmt.Errorf("copy vault data back to %q: %w (vault copy intact at %s)", source, err, dest)
+	// Cross-volume: stage and verify before exposing the restored tree.
+	partial := source + ".midas-partial"
+	if err := MarkOwnedPath(filepath.Dir(partial), partial, operationID, "rollback-partial"); err != nil {
+		return err
+	}
+	if _, err := CopyTree(dest, partial, CopyOptions{Progress: progress, Context: ctx}); err != nil {
+		return fmt.Errorf("copy vault data to recovery path %q: %w (vault copy intact at %s)", partial, err, dest)
+	}
+	if _, err := VerifyTree(dest, partial, true); err != nil {
+		return fmt.Errorf("verify staged rollback copy %q: %w (vault copy intact at %s)", partial, err, dest)
+	}
+	if err := os.Rename(partial, source); err != nil {
+		return fmt.Errorf("commit verified rollback copy to %q: %w", source, err)
+	}
+	if err := ForgetOwnership(filepath.Dir(partial), partial, operationID, "rollback-partial"); err != nil {
+		return fmt.Errorf("rollback copy committed but ownership marker could not be cleared: %w", err)
 	}
 	rep.Notes = append(rep.Notes, "the vault copy was copied back and kept at "+dest)
 	return nil
 }
 
-func restoreFromSet(s *backup.Set, source string, progress Reporter) error {
+func restoreFromSet(s *backup.Set, source string, progress Reporter, ctx context.Context, operationID string) error {
 	if err := os.MkdirAll(filepath.Dir(source), 0o755); err != nil {
 		return err
 	}
-	if _, err := CopyTree(s.FilesDir(), source, CopyOptions{Progress: progress}); err != nil {
+	partial := source + ".midas-partial"
+	if err := MarkOwnedPath(filepath.Dir(partial), partial, operationID, "rollback-partial"); err != nil {
+		return err
+	}
+	if _, err := CopyTree(s.FilesDir(), partial, CopyOptions{Progress: progress, Context: ctx}); err != nil {
 		return fmt.Errorf("restore from backup %s: %w", s.ID, err)
+	}
+	if _, err := VerifyTree(s.FilesDir(), partial, true); err != nil {
+		return fmt.Errorf("verify backup restore staging path %s: %w", partial, err)
+	}
+	if err := os.Rename(partial, source); err != nil {
+		return err
+	}
+	if err := ForgetOwnership(filepath.Dir(partial), partial, operationID, "rollback-partial"); err != nil {
+		return err
 	}
 	return nil
 }

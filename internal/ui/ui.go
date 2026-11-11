@@ -14,22 +14,24 @@ import (
 
 // UI writes user-facing output.
 type UI struct {
-	Out     io.Writer
-	Err     io.Writer
-	In      io.Reader
-	JSON    bool
-	Verbose bool
-	Color   bool
+	Out         io.Writer
+	Err         io.Writer
+	In          io.Reader
+	JSON        bool
+	Verbose     bool
+	Color       bool
+	Interactive bool
 }
 
 // New returns a UI bound to the standard streams.
 func New() *UI {
 	noColor := os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb"
 	return &UI{
-		Out:   os.Stdout,
-		Err:   os.Stderr,
-		In:    os.Stdin,
-		Color: !noColor,
+		Out:         os.Stdout,
+		Err:         os.Stderr,
+		In:          os.Stdin,
+		Color:       !noColor,
+		Interactive: isTerminal(os.Stderr),
 	}
 }
 
@@ -171,24 +173,37 @@ func (u *UI) readLine() (string, error) {
 
 // Progress renders a single-line progress indicator on stderr.
 type Progress struct {
-	Err      io.Writer
-	Label    string
-	Total    int64
-	Current  int64
-	start    time.Time
-	last     time.Time
-	finished bool
+	Err        io.Writer
+	Label      string
+	Total      int64
+	Current    int64
+	TotalFiles int
+	Files      int
+	Plain      bool
+	start      time.Time
+	last       time.Time
+	finished   bool
 }
 
 // NewProgress creates a progress for a known total byte count.
 func (u *UI) NewProgress(label string, total int64) *Progress {
-	return &Progress{Err: u.Err, Label: label, Total: total, start: time.Now()}
+	return &Progress{Err: u.Err, Label: label, Total: total, Plain: !u.Interactive, start: time.Now()}
+}
+
+func (u *UI) NewProgressWithCounts(label string, total int64, files int) *Progress {
+	p := u.NewProgress(label, total)
+	p.TotalFiles = files
+	return p
 }
 
 // Add advances the progress by n bytes.
 func (p *Progress) Add(n int64) {
 	p.Current += n
-	if time.Since(p.last) < 100*time.Millisecond && p.Current < p.Total {
+	interval := 100 * time.Millisecond
+	if p.Plain {
+		interval = time.Second
+	}
+	if time.Since(p.last) < interval && p.Current < p.Total {
 		return
 	}
 	p.last = time.Now()
@@ -197,6 +212,18 @@ func (p *Progress) Add(n int64) {
 
 // Set sets the current byte count.
 func (p *Progress) Set(n int64) { p.Current = n; p.last = time.Time{}; p.render() }
+
+func (p *Progress) AddFile() {
+	p.Files++
+	interval := 100 * time.Millisecond
+	if p.Plain {
+		interval = time.Second
+	}
+	if time.Since(p.last) >= interval || p.TotalFiles > 0 && p.Files >= p.TotalFiles {
+		p.last = time.Now()
+		p.render()
+	}
+}
 
 func (p *Progress) render() {
 	if p.finished {
@@ -215,15 +242,54 @@ func (p *Progress) render() {
 	if p.Total > 0 {
 		pct = 100 * float64(p.Current) / float64(p.Total)
 	}
-	fmt.Fprintf(p.Err, "\r%s %5.1f%%  %s / %s  %s/s  ETA %s   ",
-		p.Label, pct, FormatBytes(uint64(p.Current)), FormatBytes(uint64(p.Total)), FormatBytes(uint64(rate)), eta)
+	files := ""
+	if p.TotalFiles > 0 {
+		files = fmt.Sprintf("  files %d/%d", p.Files, p.TotalFiles)
+	}
+	message := fmt.Sprintf("%s %5.1f%%  %s / %s%s  %s/s  elapsed %s  ETA %s",
+		p.Label, pct, FormatBytes(uint64(p.Current)), FormatBytes(uint64(p.Total)), files,
+		FormatBytes(uint64(rate)), time.Since(p.start).Round(time.Second), eta)
+	if p.Plain {
+		fmt.Fprintln(p.Err, message)
+		return
+	}
+	fmt.Fprintf(p.Err, "\r%s   ", message)
 }
 
 // Done finishes the progress line.
 func (p *Progress) Done() {
 	p.finished = true
+	if p.Plain {
+		fmt.Fprintf(p.Err, "%s complete: %s / %s, %d file(s), elapsed %s\n", p.Label,
+			FormatBytes(uint64(p.Current)), FormatBytes(uint64(p.Total)), p.Files, time.Since(p.start).Round(time.Second))
+		return
+	}
 	fmt.Fprintf(p.Err, "\r%s 100.0%%  %s / %s%s\n", p.Label,
 		FormatBytes(uint64(p.Current)), FormatBytes(uint64(p.Total)), strings.Repeat(" ", 24))
+}
+
+// Failed ends progress without claiming successful completion.
+func (p *Progress) Failed() {
+	if p.finished {
+		return
+	}
+	p.finished = true
+	if p.Plain {
+		fmt.Fprintf(p.Err, "%s stopped at %s of %s after %s\n", p.Label,
+			FormatBytes(uint64(p.Current)), FormatBytes(uint64(p.Total)), time.Since(p.start).Round(time.Second))
+		return
+	}
+	fmt.Fprintf(p.Err, "\n%s stopped at %s of %s\n", p.Label,
+		FormatBytes(uint64(p.Current)), FormatBytes(uint64(p.Total)))
+}
+
+func isTerminal(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := f.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
 // FormatBytes renders a byte count in human units.

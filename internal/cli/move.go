@@ -104,7 +104,7 @@ func (c *Ctx) cmdMove(args []string) error {
 			c.UI.Warnf("%s/%s: destination %s already exists; skipping", def.ID, t.Name, t.Dest)
 		default:
 			if mover.JournalExists(vault, def.ID, t.Name) {
-				return failf(ExitGeneral, "an incomplete move journal exists for %s/%s; run `midas doctor` to resume or roll back first", def.ID, t.Name)
+				return failf(ExitGeneral, "an incomplete move journal exists for %s/%s; run `midas resume %s` or `midas rollback %s`", def.ID, t.Name, def.ID, def.ID)
 			}
 			if pathOverlaps(t.Source, vault) {
 				return failf(ExitUsage, "refusing to move %q: the vault %q overlaps it (a vault inside a target would recurse)", t.Source, vault)
@@ -289,7 +289,7 @@ func (c *Ctx) cmdMove(args []string) error {
 			}
 		}
 
-		progress := c.UI.NewProgress("move "+it.target.Name, int64(it.bytes))
+		progress := c.UI.NewProgressWithCounts("move "+it.target.Name, int64(it.bytes), it.files)
 		if sameVolumeMove, verr := mover.SameVolume(it.target.Source, vault); verr == nil && sameVolumeMove {
 			progress = nil
 		}
@@ -299,6 +299,7 @@ func (c *Ctx) cmdMove(args []string) error {
 		}
 		entry, merr := mover.MoveTarget(mover.MoveOptions{
 			App:               appID,
+			Context:           c.Context,
 			Target:            apps.Target{Name: it.target.Name},
 			Source:            it.target.Source,
 			Dest:              it.target.Dest,
@@ -314,15 +315,18 @@ func (c *Ctx) cmdMove(args []string) error {
 			Stage:             func(stage, detail string) { c.UI.Verbosef("%s: %s", it.target.Name, detail) },
 			Warn:              func(f string, a ...any) { c.UI.Warnf(f, a...) },
 		})
-		if progress != nil {
-			progress.Done()
-		}
 		if merr != nil {
+			if progress != nil {
+				progress.Failed()
+			}
 			c.Logf("move failed app=%s target=%s: %v", appID, it.target.Name, merr)
 			if errorsIsVerify(merr) {
 				return failf(ExitVerifyFailed, "%v", merr)
 			}
 			return failf(ExitGeneral, "%v", merr)
+		}
+		if progress != nil {
+			progress.Done()
 		}
 		c.UI.Successf("%s/%s moved: %s -> %s", def.ID, it.target.Name, entry.OriginalPath, entry.VaultPath)
 	}
