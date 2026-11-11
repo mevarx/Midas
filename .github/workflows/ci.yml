@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        os: [windows-latest, ubuntu-latest, macos-15, macos-15-intel]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -32,6 +32,36 @@ jobs:
         run: go vet ./...
       - name: Test
         run: go test ./...
+      - name: Parse PowerShell completion
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          go run ./cmd/midas completion powershell | Out-File -Encoding utf8 "$env:RUNNER_TEMP/midas-completion.ps1"
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("$env:RUNNER_TEMP/midas-completion.ps1", [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { throw $errors[0] }
+
+  shell-completions:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install parsers
+        run: sudo apt-get update && sudo apt-get install -y zsh fish
+      - name: Parse Bash, Zsh, and Fish completions
+        run: |
+          go run ./cmd/midas completion bash > "$RUNNER_TEMP/midas.bash"
+          go run ./cmd/midas completion zsh > "$RUNNER_TEMP/_midas"
+          go run ./cmd/midas completion fish > "$RUNNER_TEMP/midas.fish"
+          bash -n "$RUNNER_TEMP/midas.bash"
+          zsh -n "$RUNNER_TEMP/_midas"
+          fish --no-execute "$RUNNER_TEMP/midas.fish"
 
   cross-compile:
     runs-on: ubuntu-latest

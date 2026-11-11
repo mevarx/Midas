@@ -1,0 +1,11 @@
+_midas_complete() {
+  local current="${COMP_WORDS[COMP_CWORD]}"
+  local commands="init list move resume run status restore rollback plan analyze backup apps doctor completion shim version help"
+  local options="--vault --config --dry-run --yes --json --verbose --target --backup --backup-dir --copy-workers --source --keep-vault-copy --force"
+  if (( COMP_CWORD == 1 )); then
+    COMPREPLY=( $(compgen -W "$commands" -- "$current") )
+  else
+    COMPREPLY=( $(compgen -W "$options" -- "$current") )
+  fi
+}
+complete -F _midas_complete midas

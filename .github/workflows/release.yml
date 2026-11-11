@@ -13,16 +13,30 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        os: [windows-latest, ubuntu-latest, macos-15, macos-15-intel]
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
+      - name: Validate tag and commit
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, re, subprocess
+          tag = os.environ["GITHUB_REF_NAME"]
+          if not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?", tag):
+              raise SystemExit(f"invalid release tag: {tag}")
+          tagged = subprocess.check_output(["git", "rev-parse", f"refs/tags/{tag}^{{commit}}"], text=True).strip()
+          if tagged != os.environ["GITHUB_SHA"]:
+              raise SystemExit(f"tag resolves to {tagged}, workflow commit is {os.environ['GITHUB_SHA']}")
+          PY
       - name: Format check
         if: runner.os == 'Linux'
         run: test -z "$(gofmt -l ./cmd ./internal ./apps)"
@@ -49,8 +63,69 @@ jobs:
             done
           done
 
-  goreleaser:
+  release-artifacts:
     needs: [validate, cross-compile]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --snapshot --clean
+      - name: Verify release archives and checksums
+        env:
+          EXPECTED_COMMIT: ${{ github.sha }}
+        run: |
+          (cd dist && sha256sum --check checksums.txt)
+          python3 - <<'PY'
+          import glob, os, pathlib, subprocess, tarfile, tempfile, zipfile, json
+          archives = glob.glob("dist/*.tar.gz") + glob.glob("dist/*.zip")
+          expected = {"linux_amd64", "linux_arm64", "darwin_amd64", "darwin_arm64", "windows_amd64", "windows_arm64"}
+          names = {pathlib.Path(p).name for p in archives}
+          missing = [target for target in expected if not any(target in name for name in names)]
+          if missing:
+              raise SystemExit(f"missing release target archive(s): {missing}")
+          for path in archives:
+              if path.endswith(".zip"):
+                  with zipfile.ZipFile(path) as archive:
+                      if archive.testzip() is not None or not any(name.endswith("midas.exe") for name in archive.namelist()):
+                          raise SystemExit(f"invalid Windows archive: {path}")
+              else:
+                  with tarfile.open(path, "r:gz") as archive:
+                      if not any(pathlib.PurePosixPath(name).name == "midas" for name in archive.getnames()):
+                          raise SystemExit(f"missing binary in archive: {path}")
+          linux = next(p for p in archives if "linux_amd64" in pathlib.Path(p).name)
+          with tempfile.TemporaryDirectory() as directory:
+              with tarfile.open(linux, "r:gz") as archive:
+                  archive.extractall(directory, filter="data")
+              binary = next(pathlib.Path(directory).rglob("midas"))
+              install_dir = pathlib.Path(directory) / "install-bin"
+              install_dir.mkdir()
+              installed = install_dir / "midas"
+              import shutil
+              shutil.copy2(binary, installed)
+              env = dict(os.environ, PATH=str(install_dir) + os.pathsep + os.environ["PATH"])
+              output = subprocess.check_output(["midas", "version", "--json", "--commit"], text=True, env=env)
+              version = json.loads(output)
+              if version.get("schema_version") != 1 or version.get("commit") != os.environ["EXPECTED_COMMIT"]:
+                  raise SystemExit(f"release version smoke test failed: {version}")
+              replacement = install_dir / "midas.new"
+              shutil.copy2(binary, replacement)
+              os.replace(replacement, installed)
+              subprocess.check_call(["midas", "version", "--json"], env=env)
+          PY
+
+  goreleaser:
+    needs: [validate, cross-compile, release-artifacts]
     runs-on: ubuntu-latest
     permissions:
       contents: write

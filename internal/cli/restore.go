@@ -17,6 +17,7 @@ func (c *Ctx) cmdRestore(args []string) error {
 	vaultF, cfgF, dry, yes, jsonF, verbose := c.addGlobal(fs)
 	keepVault := fs.Bool("keep-vault-copy", false, "keep the vault copy after restoring")
 	force := fs.Bool("force", false, "restore even if the app appears to be running")
+	workers := fs.Int("copy-workers", 1, "bounded copy workers (1-16; default 1)")
 	var targetFlags stringList
 	fs.Var(&targetFlags, "target", "restore only this target (repeatable)")
 	if err := fs.Parse(args); err != nil {
@@ -27,6 +28,9 @@ func (c *Ctx) cmdRestore(args []string) error {
 	}
 	if fs.NArg() != 1 {
 		return failf(ExitUsage, "usage: midas restore <app>")
+	}
+	if *workers < 1 || *workers > 16 {
+		return failf(ExitUsage, "--copy-workers must be between 1 and 16")
 	}
 	vault, err := c.requireVault()
 	if err != nil {
@@ -93,8 +97,8 @@ func (c *Ctx) cmdRestore(args []string) error {
 	for _, e := range selected {
 		perr := mover.Restore(mover.RestoreOptions{
 			App: e.App, Target: e.Target,
-			Context: c.Context,
-			Source:  e.OriginalPath, Dest: e.VaultPath, Vault: vault,
+			Context: c.Context, Workers: *workers,
+			Source: e.OriginalPath, Dest: e.VaultPath, Vault: vault,
 			KeepVaultCopy: *keepVault,
 			Verify:        c.Cfg.Verify,
 			Force:         *force,

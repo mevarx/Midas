@@ -1,0 +1,11 @@
+complete -c midas -f -n '__fish_use_subcommand' -a 'init list move resume run status restore rollback plan analyze backup apps doctor completion shim version help'
+complete -c midas -f -n 'not __fish_use_subcommand' -l vault -r
+complete -c midas -f -n 'not __fish_use_subcommand' -l config -r
+complete -c midas -f -n 'not __fish_use_subcommand' -l target -r
+complete -c midas -f -n 'not __fish_use_subcommand' -l backup -r -a 'full essential none'
+complete -c midas -f -n 'not __fish_use_subcommand' -l backup-dir -r
+complete -c midas -f -n 'not __fish_use_subcommand' -l copy-workers -r
+complete -c midas -f -n 'not __fish_use_subcommand' -l source -r -a 'auto bak vault backup'
+complete -c midas -f -n 'not __fish_use_subcommand' -l dry-run -d 'Print plan without changes'
+complete -c midas -f -n 'not __fish_use_subcommand' -l json -d 'Machine-readable output'
+complete -c midas -f -n 'not __fish_use_subcommand' -l force -d 'Override running-app check'

@@ -13,7 +13,6 @@ import (
 
 	"github.com/midas-cli/midas/internal/config"
 	"github.com/midas-cli/midas/internal/ui"
-	"github.com/midas-cli/midas/internal/version"
 )
 
 // Exit codes (Section 6.12).
@@ -82,13 +81,21 @@ func RunContext(args []string, runContext context.Context) int {
 	u.JSON = g.JSON
 	u.Verbose = g.Verbose
 	if err != nil {
-		u.Errorf("%v", err)
-		fmt.Fprintln(u.Err, shortUsage())
+		if g.JSON {
+			_ = u.PrintJSON(map[string]any{"error": map[string]any{"code": ExitUsage, "code_name": "usage_error", "message": err.Error()}})
+		} else {
+			u.Errorf("%v", err)
+			fmt.Fprintln(u.Err, shortUsage())
+		}
 		return ExitUsage
 	}
 	cfg, err := config.Load(g.Config)
 	if err != nil {
-		u.Errorf("%v", err)
+		if g.JSON {
+			_ = u.PrintJSON(map[string]any{"error": map[string]any{"code": ExitGeneral, "code_name": "error", "message": err.Error()}})
+		} else {
+			u.Errorf("%v", err)
+		}
 		return ExitGeneral
 	}
 	ctx := &Ctx{G: g, Context: runContext, Cfg: cfg, UI: u}
@@ -106,12 +113,7 @@ func RunContext(args []string, runContext context.Context) int {
 		printHelp(u)
 		return ExitOK
 	case "version", "--version", "-V":
-		if u.JSON {
-			_ = u.PrintJSON(map[string]string{"version": version.Version})
-		} else {
-			u.Infof("midas %s", version.Version)
-		}
-		return ExitOK
+		err = ctx.cmdVersion(cmdArgs)
 	case "init":
 		err = ctx.cmdInit(cmdArgs)
 	case "list":
@@ -120,6 +122,12 @@ func RunContext(args []string, runContext context.Context) int {
 		err = ctx.cmdMove(cmdArgs)
 	case "resume":
 		err = ctx.cmdResume(cmdArgs)
+	case "plan":
+		err = ctx.cmdPlan(cmdArgs)
+	case "analyze":
+		err = ctx.cmdAnalyze(cmdArgs)
+	case "completion":
+		err = ctx.cmdCompletion(cmdArgs)
 	case "run":
 		return ctx.cmdRun(cmdArgs) // run returns the child's exit code
 	case "status":
@@ -137,17 +145,51 @@ func RunContext(args []string, runContext context.Context) int {
 	case "shim":
 		err = ctx.cmdShim(cmdArgs)
 	default:
-		u.Errorf("unknown command %q", cmdName)
-		fmt.Fprintln(u.Err, shortUsage())
+		if ctx.G.JSON {
+			_ = u.PrintJSON(map[string]any{"error": map[string]any{"code": ExitUsage, "code_name": "usage_error", "message": fmt.Sprintf("unknown command %q", cmdName)}})
+		} else {
+			u.Errorf("unknown command %q", cmdName)
+			fmt.Fprintln(u.Err, shortUsage())
+		}
 		return ExitUsage
 	}
 	if err != nil {
 		if !isSilent(err) {
-			u.Errorf("%v", err)
+			if ctx.G.JSON {
+				code := exitCode(err)
+				_ = u.PrintJSON(map[string]any{"error": map[string]any{"code": code, "code_name": errorCodeName(code), "message": err.Error()}})
+			} else {
+				u.Errorf("%v", err)
+			}
 		}
 		return exitCode(err)
 	}
 	return ExitOK
+}
+
+func errorCodeName(code int) string {
+	switch code {
+	case ExitOK:
+		return "ok"
+	case ExitUsage:
+		return "usage_error"
+	case ExitRunning:
+		return "app_running"
+	case ExitNoSpace:
+		return "insufficient_space"
+	case ExitVaultUnreach:
+		return "vault_unreachable"
+	case ExitVerifyFailed:
+		return "verification_failed"
+	case ExitUnhealthy:
+		return "unhealthy"
+	case ExitBackupFailed:
+		return "backup_failed"
+	case ExitBackupProtected:
+		return "backup_protected"
+	default:
+		return "error"
+	}
 }
 
 type silentError struct{ err error }
@@ -318,7 +360,7 @@ func (c *Ctx) closeLog() {
 }
 
 func shortUsage() string {
-	return "usage: midas <command> [flags]\ncommands: init, list, move, resume, run, status, restore, rollback, backup, apps, doctor, shim"
+	return "usage: midas <command> [flags]\ncommands: init, list, move, resume, run, status, restore, rollback, plan, analyze, backup, apps, doctor, completion, shim"
 }
 
 func printHelp(u *ui.UI) {
@@ -332,6 +374,8 @@ Commands:
   list                     show known apps, targets, sizes and state
   move <app>               move an app's folders into the vault and link them
   resume <app>             safely restart a validated interrupted copy
+  plan <app>               show a read-only move plan
+  analyze <app>            inspect targets and move readiness without changes
   run <app> -- <cmd...>    launch a command with temp redirected to the vault
   status                   check every moved target, link and disk space
   restore <app>            move an app's data back to its original location
@@ -339,6 +383,7 @@ Commands:
   backup <list|show|verify|delete>   manage backup sets
   apps <list|show|validate|path>     inspect app definitions
   doctor                   read-only health report; --repair is explicit
+  completion <shell>       print bash, zsh, fish or powershell completions
   shim <app>               create a wrapper that applies run automatically
   version                  print the version
 

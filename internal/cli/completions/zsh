@@ -1,0 +1,14 @@
+#compdef midas
+
+_midas() {
+  local -a commands options
+  commands=(init list move resume run status restore rollback plan analyze backup apps doctor completion shim version help)
+  options=(--vault --config --dry-run --yes --json --verbose --target --backup --backup-dir --copy-workers --source --keep-vault-copy --force)
+  if (( CURRENT == 2 )); then
+    _describe 'command' commands
+  else
+    _describe 'option' options
+  fi
+}
+
+_midas "$@"

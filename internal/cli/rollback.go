@@ -15,6 +15,7 @@ func (c *Ctx) cmdRollback(args []string) error {
 	backupID := fs.String("backup", "", "use this backup set")
 	source := fs.String("source", "auto", "auto|bak|vault|backup")
 	force := fs.Bool("force", false, "roll back even if the app appears to be running")
+	workers := fs.Int("copy-workers", 1, "bounded copy workers (1-16; default 1)")
 	var targetFlags stringList
 	fs.Var(&targetFlags, "target", "roll back only this target (repeatable)")
 	if err := fs.Parse(args); err != nil {
@@ -25,6 +26,9 @@ func (c *Ctx) cmdRollback(args []string) error {
 	}
 	if fs.NArg() != 1 {
 		return failf(ExitUsage, "usage: midas rollback <app> [--source auto|bak|vault|backup]")
+	}
+	if *workers < 1 || *workers > 16 {
+		return failf(ExitUsage, "--copy-workers must be between 1 and 16")
 	}
 	switch *source {
 	case "auto", "bak", "vault", "backup":
@@ -106,8 +110,8 @@ func (c *Ctx) cmdRollback(args []string) error {
 
 		rep, rerr := mover.Rollback(mover.RollbackOptions{
 			App: def.ID, Target: t.Name, Vault: vault,
-			Context: c.Context,
-			Source:  t.Source, Dest: t.Dest,
+			Context: c.Context, Workers: *workers,
+			Source: t.Source, Dest: t.Dest,
 			BackupSet: set, Manifest: m,
 			Force: *force, DryRun: c.G.DryRun, Prefer: *source,
 			Warn: func(f string, a ...any) { c.UI.Warnf(f, a...) },

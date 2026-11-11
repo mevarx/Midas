@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 
 	"github.com/midas-cli/midas/internal/platform"
 )
@@ -35,6 +36,13 @@ type Stats struct {
 type CopyOptions struct {
 	Progress Reporter
 	Context  context.Context
+	Workers  int
+}
+
+type copyTask struct {
+	source string
+	dest   string
+	info   os.FileInfo
 }
 
 const copyBufSize = 1 << 20
@@ -62,12 +70,31 @@ func CopyTree(src, dst string, opts CopyOptions) (Stats, error) {
 	}
 	st.Dirs++
 
+	if opts.Workers < 0 || opts.Workers > 16 {
+		return st, errors.New("copy workers must be between 1 and 16")
+	}
+	if opts.Workers == 0 {
+		opts.Workers = 1
+	}
+	var pool *copyPool
+	if opts.Workers > 1 {
+		pool, err = startCopyPool(ctx, opts.Workers, opts.Progress)
+		if err != nil {
+			return st, err
+		}
+	}
 	seen := make(map[string]string)
 	err = filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
-		select {
-		case <-ctx.Done():
+		if ctx.Err() != nil {
 			return ctx.Err()
-		default:
+		}
+		if pool != nil {
+			if failure := pool.failure(); failure != nil {
+				return failure
+			}
+			if pool.ctx.Err() != nil {
+				return pool.ctx.Err()
+			}
 		}
 		if err != nil {
 			return fmt.Errorf("read %q: %w", p, err)
@@ -84,9 +111,6 @@ func CopyTree(src, dst string, opts CopyOptions) (Stats, error) {
 			}
 			if d.IsDir() {
 				return filepath.SkipDir
-			}
-			if reporter, ok := opts.Progress.(interface{ AddFile() }); ok {
-				reporter.AddFile()
 			}
 			return nil
 		} else if lerr != nil && d.Type()&os.ModeSymlink != 0 {
@@ -114,6 +138,9 @@ func CopyTree(src, dst string, opts CopyOptions) (Stats, error) {
 		}
 		seen[lower] = filepath.ToSlash(rel)
 
+		if pool != nil {
+			return pool.submit(copyTask{source: p, dest: target, info: info})
+		}
 		n, err := copyRegular(ctx, p, target, info)
 		if err != nil {
 			return err
@@ -122,13 +149,189 @@ func CopyTree(src, dst string, opts CopyOptions) (Stats, error) {
 		st.Bytes += n
 		if opts.Progress != nil {
 			opts.Progress.Add(n)
-		}
-		if reporter, ok := opts.Progress.(interface{ AddFile() }); ok {
-			reporter.AddFile()
+			if reporter, ok := opts.Progress.(interface{ AddFile() }); ok {
+				reporter.AddFile()
+			}
 		}
 		return nil
 	})
-	return st, err
+	if pool == nil {
+		return st, err
+	}
+	totals, copyErr := pool.finish(err)
+	st.Files += totals.files
+	st.Bytes += totals.bytes
+	return st, copyErr
+}
+
+type copyTotals struct {
+	files int
+	bytes int64
+}
+
+type copyResult struct {
+	index int
+	bytes int64
+	err   error
+}
+
+type indexedCopyTask struct {
+	index int
+	task  copyTask
+}
+
+type copyPool struct {
+	ctx           context.Context
+	callerCtx     context.Context
+	cancel        context.CancelFunc
+	jobs          chan indexedCopyTask
+	results       chan copyResult
+	workerGroup   sync.WaitGroup
+	collectorDone chan struct{}
+	mu            sync.Mutex
+	firstErr      error
+	firstErrIndex int
+	totals        copyTotals
+	nextIndex     int
+	progress      Reporter
+}
+
+type lockedReporter struct {
+	mu sync.Mutex
+	r  Reporter
+}
+
+func (r *lockedReporter) Add(n int64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.r.Add(n)
+}
+
+func (r *lockedReporter) AddFile() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if reporter, ok := r.r.(interface{ AddFile() }); ok {
+		reporter.AddFile()
+	}
+}
+
+func startCopyPool(ctx context.Context, workers int, progress Reporter) (*copyPool, error) {
+	if workers < 1 {
+		workers = 1
+	}
+	if workers > 16 {
+		return nil, errors.New("copy workers must be between 1 and 16")
+	}
+	workCtx, cancel := context.WithCancel(ctx)
+	pool := &copyPool{
+		ctx: workCtx, callerCtx: ctx, cancel: cancel,
+		jobs:          make(chan indexedCopyTask, workers*2),
+		results:       make(chan copyResult, workers),
+		collectorDone: make(chan struct{}),
+		firstErrIndex: int(^uint(0) >> 1),
+		progress:      progress,
+	}
+	reporter := progress
+	if progress != nil && workers > 1 {
+		reporter = &lockedReporter{r: progress}
+	}
+	pool.progress = reporter
+	for range workers {
+		pool.workerGroup.Add(1)
+		go func() {
+			defer pool.workerGroup.Done()
+			for job := range pool.jobs {
+				if err := pool.ctx.Err(); err != nil {
+					pool.results <- copyResult{index: job.index, err: err}
+					continue
+				}
+				n, err := copyRegular(pool.ctx, job.task.source, job.task.dest, job.task.info)
+				if err == nil && reporter != nil {
+					reporter.Add(n)
+					if fileReporter, ok := reporter.(interface{ AddFile() }); ok {
+						fileReporter.AddFile()
+					}
+				}
+				if err != nil {
+					pool.recordError(job.index, err)
+				}
+				pool.results <- copyResult{index: job.index, bytes: n, err: err}
+				if err != nil {
+					pool.cancel()
+				}
+			}
+		}()
+	}
+	go func() {
+		defer close(pool.collectorDone)
+		for result := range pool.results {
+			if result.err != nil {
+				continue
+			}
+			pool.mu.Lock()
+			pool.totals.files++
+			pool.totals.bytes += result.bytes
+			pool.mu.Unlock()
+		}
+	}()
+	return pool, nil
+}
+
+func (p *copyPool) addFile() {
+	if reporter, ok := p.progress.(interface{ AddFile() }); ok {
+		reporter.AddFile()
+	}
+}
+
+func (p *copyPool) submit(task copyTask) error {
+	index := p.nextIndex
+	select {
+	case p.jobs <- indexedCopyTask{index: index, task: task}:
+		p.nextIndex++
+		return nil
+	case <-p.ctx.Done():
+		if err := p.failure(); err != nil {
+			return err
+		}
+		return p.ctx.Err()
+	}
+}
+
+func (p *copyPool) recordError(index int, err error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if index < p.firstErrIndex && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		p.firstErrIndex = index
+		p.firstErr = err
+	}
+}
+
+func (p *copyPool) failure() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.firstErr
+}
+
+func (p *copyPool) finish(walkErr error) (copyTotals, error) {
+	if walkErr != nil {
+		p.cancel()
+	}
+	close(p.jobs)
+	p.workerGroup.Wait()
+	close(p.results)
+	<-p.collectorDone
+	callerErr := p.callerCtx.Err()
+	p.cancel()
+	p.mu.Lock()
+	totals, copyErr := p.totals, p.firstErr
+	p.mu.Unlock()
+	if copyErr != nil {
+		return totals, fmt.Errorf("copy failed: %w", copyErr)
+	}
+	if callerErr != nil && walkErr == nil {
+		walkErr = callerErr
+	}
+	return totals, walkErr
 }
 
 func recreateLink(srcRoot, dstRoot, src, dst, target string, d fs.DirEntry) error {
@@ -298,12 +501,26 @@ func SameTreeSnapshot(a, b map[string]string) bool { return reflect.DeepEqual(a,
 // VerifyTree compares src and dst by count, size and (optionally) hash.
 // It never follows links.
 func VerifyTree(src, dst string, hash bool) (Stats, error) {
+	return VerifyTreeContext(context.Background(), src, dst, hash, nil)
+}
+
+// VerifyTreeContext compares two trees while supporting cancellation and a
+// separate verification progress reporter.
+func VerifyTreeContext(ctx context.Context, src, dst string, hash bool, progress Reporter) (Stats, error) {
 	var st Stats
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	var problems []string
 	srcCount := 0
 	dstCount := 0
 
 	err := filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 		if err != nil {
 			return fmt.Errorf("read source %q: %w", p, err)
 		}
@@ -337,6 +554,12 @@ func VerifyTree(src, dst string, hash bool) (Stats, error) {
 		}
 		st.Files++
 		st.Bytes += si.Size()
+		if progress != nil {
+			progress.Add(si.Size())
+			if fileReporter, ok := progress.(interface{ AddFile() }); ok {
+				fileReporter.AddFile()
+			}
+		}
 		di, derr := os.Lstat(tp)
 		if derr != nil {
 			problems = append(problems, rel+": missing in destination")
@@ -347,8 +570,8 @@ func VerifyTree(src, dst string, hash bool) (Stats, error) {
 			return nil
 		}
 		if hash {
-			h1, err1 := hashFile(p)
-			h2, err2 := hashFile(tp)
+			h1, err1 := hashFileContext(ctx, p)
+			h2, err2 := hashFileContext(ctx, tp)
 			if err1 != nil || err2 != nil {
 				problems = append(problems, fmt.Sprintf("%s: cannot hash (%v / %v)", rel, err1, err2))
 			} else if h1 != h2 {
@@ -421,14 +644,35 @@ func pathWithinRoot(root, candidate string) (bool, string) {
 }
 
 func hashFile(p string) (string, error) {
+	return hashFileContext(context.Background(), p)
+}
+
+func hashFileContext(ctx context.Context, p string) (string, error) {
 	f, err := os.Open(p)
 	if err != nil {
 		return "", err
 	}
 	defer f.Close()
 	h := sha256.New()
-	if _, err := io.CopyBuffer(h, f, make([]byte, copyBufSize)); err != nil {
-		return "", err
+	buf := make([]byte, copyBufSize)
+	for {
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		default:
+		}
+		n, readErr := f.Read(buf)
+		if n > 0 {
+			if _, err := h.Write(buf[:n]); err != nil {
+				return "", err
+			}
+		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			return "", readErr
+		}
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }

@@ -12,6 +12,8 @@ import (
 	"time"
 )
 
+const JSONSchemaVersion = 1
+
 // UI writes user-facing output.
 type UI struct {
 	Out         io.Writer
@@ -79,9 +81,28 @@ func (u *UI) Verbosef(format string, a ...any) {
 
 // PrintJSON writes a stable, indented JSON document to stdout.
 func (u *UI) PrintJSON(v any) error {
-	enc := json.NewEncoder(u.Out)
-	enc.SetIndent("", "  ")
-	return enc.Encode(v)
+	data, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(data, &object); err == nil && object != nil {
+		if _, exists := object["schema_version"]; !exists {
+			version, _ := json.Marshal(JSONSchemaVersion)
+			object["schema_version"] = version
+		}
+		data, err = json.MarshalIndent(object, "", "  ")
+		if err != nil {
+			return err
+		}
+	} else {
+		data, err = json.MarshalIndent(v, "", "  ")
+		if err != nil {
+			return err
+		}
+	}
+	_, err = fmt.Fprintln(u.Out, string(data))
+	return err
 }
 
 // Table prints an aligned table. It returns nothing; rows are strings.
@@ -187,7 +208,7 @@ type Progress struct {
 
 // NewProgress creates a progress for a known total byte count.
 func (u *UI) NewProgress(label string, total int64) *Progress {
-	return &Progress{Err: u.Err, Label: label, Total: total, Plain: !u.Interactive, start: time.Now()}
+	return &Progress{Err: u.Err, Label: label, Total: total, Plain: !u.Interactive || u.JSON, start: time.Now()}
 }
 
 func (u *UI) NewProgressWithCounts(label string, total int64, files int) *Progress {

@@ -40,3 +40,21 @@ func TestLoadRejectsMetadataDirectorySymlink(t *testing.T) {
 		t.Fatal("manifest metadata directory symlink was followed")
 	}
 }
+
+func TestLoadRejectsUnknownRecoveryMetadataFields(t *testing.T) {
+	vault := t.TempDir()
+	if err := os.MkdirAll(filepath.Dir(Path(vault)), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	data := []byte(`{"schema":1,"midas_version":"test","entries":[],"future_recovery_field":true}`)
+	if err := os.WriteFile(Path(vault), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(vault); err == nil {
+		t.Fatal("unknown recovery metadata field was silently discarded")
+	}
+	got, err := os.ReadFile(Path(vault))
+	if err != nil || string(got) != string(data) {
+		t.Fatalf("unknown metadata was not preserved: %q, %v", got, err)
+	}
+}
