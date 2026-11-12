@@ -30,7 +30,11 @@ jobs:
         run: go mod verify
       - name: Vet
         run: go vet ./...
+      - name: Test (race)
+        if: runner.os != 'Windows'
+        run: go test -race ./...
       - name: Test
+        if: runner.os == 'Windows'
         run: go test ./...
       - name: Parse PowerShell completion
         if: runner.os == 'Windows'
@@ -41,6 +45,25 @@ jobs:
           $errors = $null
           [System.Management.Automation.Language.Parser]::ParseFile("$env:RUNNER_TEMP/midas-completion.ps1", [ref]$tokens, [ref]$errors) | Out-Null
           if ($errors.Count -gt 0) { throw $errors[0] }
+
+  static-analysis:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install staticcheck
+        run: go install honnef.co/go/tools/cmd/staticcheck@2025.1.1
+      - name: Run staticcheck
+        run: staticcheck ./...
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+      - name: Run govulncheck
+        run: govulncheck ./...
 
   shell-completions:
     runs-on: ubuntu-latest

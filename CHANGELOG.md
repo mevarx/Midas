@@ -38,6 +38,9 @@ before publication.
   platform (Windows `filepath.Rel` returns backslashes).
 - On Windows, query reparse points only for irregular entries, avoiding two
   filesystem calls for every regular file and directory during tree walks.
+- CI runs `go test -race` on Ubuntu and macOS, adds pinned staticcheck and
+  govulncheck steps, and enables weekly Dependabot updates for Go modules and
+  GitHub Actions.
 - Treat post-commit ownership-marker cleanup failures as warnings instead of
   rolling back committed, verified data; `doctor --repair` removes stale
   markers for known targets after revalidation.
