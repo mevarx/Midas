@@ -38,6 +38,8 @@ before publication.
   platform (Windows `filepath.Rel` returns backslashes).
 - On Windows, query reparse points only for irregular entries, avoiding two
   filesystem calls for every regular file and directory during tree walks.
+- Delete `<vault>/.midas/logs/*.log` files older than 30 days on a best-effort
+  basis once per run; documented in CONFIGURATION.md.
 - fsync the parent directory after atomic journal, manifest, and BACKUP.json
   renames on Unix so metadata survives a crash immediately after the write.
   The step is a documented no-op on Windows.

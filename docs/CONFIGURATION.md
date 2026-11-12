@@ -22,3 +22,7 @@ Use `midas --config <path>` to select another config and `midas --vault <path>`
 to override the vault for one command. Config writes are atomic and use
 owner-only permissions where the platform supports them. App definitions are
 separate declarative TOML files; see [ADDING_AN_APP.md](ADDING_AN_APP.md).
+
+Midas deletes `<vault>/.midas/logs/*.log` files older than 30 days on a
+best-effort basis once per run (on the first logged action); failures are
+ignored.

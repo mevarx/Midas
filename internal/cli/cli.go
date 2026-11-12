@@ -47,6 +47,9 @@ type Ctx struct {
 	Cfg     *config.Config
 	UI      *ui.UI
 	logF    *os.File
+	// logSwept records whether the old-log sweep has been attempted for this
+	// Ctx, so it runs at most once per run.
+	logSwept bool
 }
 
 // codedError carries an exit code.
@@ -378,6 +381,7 @@ func (c *Ctx) Logf(format string, a ...any) {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return
 		}
+		c.sweepLogs(dir)
 		name := filepath.Join(dir, time.Now().Format("2006-01-02")+".log")
 		f, err := os.OpenFile(name, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 		if err != nil {
@@ -386,6 +390,34 @@ func (c *Ctx) Logf(format string, a ...any) {
 		c.logF = f
 	}
 	fmt.Fprintf(c.logF, "%s %s\n", time.Now().UTC().Format(time.RFC3339), fmt.Sprintf(format, a...))
+}
+
+// logRetention is how long per-run log files are kept.
+const logRetention = 30 * 24 * time.Hour
+
+// sweepLogs deletes *.log files in dir older than logRetention. It is
+// best-effort: every error is ignored and the sweep is attempted only once per
+// Ctx, even when it fails.
+func (c *Ctx) sweepLogs(dir string) {
+	if c.logSwept {
+		return
+	}
+	c.logSwept = true
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-logRetention)
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".log") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil || !info.ModTime().Before(cutoff) {
+			continue
+		}
+		_ = os.Remove(filepath.Join(dir, entry.Name()))
+	}
 }
 
 func (c *Ctx) closeLog() {
