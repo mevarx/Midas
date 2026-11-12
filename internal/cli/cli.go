@@ -300,8 +300,10 @@ func (c *Ctx) Vault() (string, error) {
 	return filepath.Clean(abs), nil
 }
 
-// requireVault resolves the vault and checks it exists and is writable.
-func (c *Ctx) requireVault() (string, error) {
+// requireVaultReadOnly resolves the vault and checks it exists and is a
+// directory. It never creates or writes anything, so diagnostic commands work
+// on read-only vaults.
+func (c *Ctx) requireVaultReadOnly() (string, error) {
 	v, err := c.Vault()
 	if err != nil {
 		return "", err
@@ -309,6 +311,15 @@ func (c *Ctx) requireVault() (string, error) {
 	fi, err := os.Stat(v)
 	if err != nil || !fi.IsDir() {
 		return "", failf(ExitVaultUnreach, "vault %q is not reachable (is the drive mounted?)", v)
+	}
+	return v, nil
+}
+
+// requireVault resolves the vault and checks it exists and is writable.
+func (c *Ctx) requireVault() (string, error) {
+	v, err := c.requireVaultReadOnly()
+	if err != nil {
+		return "", err
 	}
 	f, err := os.CreateTemp(v, ".midas-write-test-*")
 	if err != nil {

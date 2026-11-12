@@ -39,7 +39,7 @@ func (c *Ctx) cmdStatus(args []string) error {
 	if err := c.syncGlobal(vaultF, cfgF, dry, yes, jsonF, verbose); err != nil {
 		return err
 	}
-	vault, err := c.requireVault()
+	vault, err := c.requireVaultReadOnly()
 	if err != nil {
 		return err
 	}

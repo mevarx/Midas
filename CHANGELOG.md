@@ -38,6 +38,9 @@ before publication.
   platform (Windows `filepath.Rel` returns backslashes).
 - On Windows, query reparse points only for irregular entries, avoiding two
   filesystem calls for every regular file and directory during tree walks.
+- Let read-only commands (`status`, `list`, `plan`, `analyze`, and `doctor`
+  without `--repair`) inspect a read-only vault. Mutating commands keep the
+  writability check and exit 5.
 - Fix `HealthCheck` to check the byte read through the link, descend when no
   top-level file exists, and reuse a single directory listing. An unreadable
   file through the link now reports it unhealthy instead of silently passing.
