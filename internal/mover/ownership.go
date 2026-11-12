@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/mevarx/Midas/internal/platform"
@@ -250,8 +252,43 @@ func RemoveOwnedPath(root, path, operationID, kind string) error {
 	if err != nil || !os.SameFile(before, after) {
 		return fmt.Errorf("owned path %q changed during validation; preserving it", path)
 	}
-	if err := os.RemoveAll(path); err != nil {
+	if err := removeOwnedTree(path); err != nil {
 		return fmt.Errorf("remove owned path %q: %w", path, err)
 	}
 	return os.Remove(ownerPath(path))
+}
+
+// removeOwnedTree deletes an owned tree depth-first using Lstat semantics,
+// clearing read-only modes first so children of read-only directories can be
+// unlinked. Links and junctions are removed as single entries and never
+// followed. The ownership marker next to path is not touched here.
+func removeOwnedTree(path string) error {
+	var paths []string
+	err := filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		paths = append(paths, p)
+		if _, isLink, lerr := platform.Current().ReadLink(p); lerr != nil {
+			return fmt.Errorf("inspect %q: %w", p, lerr)
+		} else if isLink {
+			return nil
+		}
+		if d.Type()&os.ModeSymlink == 0 {
+			if cerr := os.Chmod(p, 0o700); cerr != nil && !errors.Is(cerr, os.ErrNotExist) {
+				return fmt.Errorf("clear read-only mode on %q: %w", p, cerr)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(paths)))
+	for _, p := range paths {
+		if rerr := os.Remove(p); rerr != nil && !errors.Is(rerr, os.ErrNotExist) {
+			return fmt.Errorf("delete %q: %w", p, rerr)
+		}
+	}
+	return nil
 }

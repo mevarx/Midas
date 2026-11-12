@@ -187,7 +187,7 @@ func MoveTarget(o MoveOptions) (entry manifest.Entry, err error) {
 		if err := MarkOwnedPath(filepath.Dir(partial), partial, operationID, "move-partial"); err != nil {
 			return entry, fmt.Errorf("claim partial path: %w", err)
 		}
-		if _, cerr := CopyTree(o.Source, partial, CopyOptions{Progress: o.Progress, Context: o.Context, Workers: o.Workers}); cerr != nil {
+		if _, cerr := CopyTree(o.Source, partial, CopyOptions{Progress: o.Progress, Context: o.Context, Workers: o.Workers, StageWritable: true}); cerr != nil {
 			return entry, fmt.Errorf("copy failed, original untouched: %w", cerr)
 		}
 		j.State = StateVerifying
@@ -197,6 +197,11 @@ func MoveTarget(o MoveOptions) (entry manifest.Entry, err error) {
 		}
 		if _, verr := VerifyTreeContext(o.Context, o.Source, partial, o.Verify == "hash", o.VerifyProgress); verr != nil {
 			return entry, fmt.Errorf("%w: %v", ErrVerifyFailed, verr)
+		}
+		// The staged copy was created writable; restore the original modes
+		// before TreeSnapshot compares permission bits and before commit.
+		if err := applyTreeModes(o.Source, partial); err != nil {
+			return entry, fmt.Errorf("apply original modes to staged copy: %w", err)
 		}
 		j.State = StateRenaming
 		o.Stage(StateRenaming, "moving verified copy into place")

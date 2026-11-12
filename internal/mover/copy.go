@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 
@@ -182,6 +183,52 @@ func CopyTree(src, dst string, opts CopyOptions) (Stats, error) {
 	st.Files += totals.files
 	st.Bytes += totals.bytes
 	return st, copyErr
+}
+
+// applyTreeModes restores the source tree's permission bits on a staged copy
+// made with CopyOptions.StageWritable. Entries are chmod'ed bottom-up (reverse
+// lexical order, which puts the root last) so a read-only directory never
+// blocks changes to its children. Links are never chmod'ed.
+func applyTreeModes(src, dst string) error {
+	var paths []string
+	err := filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return fmt.Errorf("read %q: %w", p, err)
+		}
+		rel, rerr := filepath.Rel(src, p)
+		if rerr != nil {
+			return rerr
+		}
+		if _, isLink, lerr := platform.Current().ReadLink(p); lerr != nil {
+			return fmt.Errorf("read link %q: %w", p, lerr)
+		} else if isLink {
+			return nil
+		}
+		paths = append(paths, rel)
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(paths)))
+	for _, rel := range paths {
+		srcPath := filepath.Join(src, rel)
+		dstPath := dst
+		if rel != "." {
+			dstPath = filepath.Join(dst, rel)
+		}
+		info, err := os.Lstat(srcPath)
+		if err != nil {
+			return fmt.Errorf("stat source %q: %w", srcPath, err)
+		}
+		if _, err := os.Lstat(dstPath); err != nil {
+			return fmt.Errorf("stat staged copy %q: %w", dstPath, err)
+		}
+		if err := os.Chmod(dstPath, info.Mode().Perm()); err != nil {
+			return fmt.Errorf("restore mode on %q: %w", dstPath, err)
+		}
+	}
+	return nil
 }
 
 type copyTotals struct {

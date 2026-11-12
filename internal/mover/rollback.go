@@ -314,11 +314,14 @@ func placeFromVault(dest, source string, rep *RollbackReport, progress Reporter,
 	if err := MarkOwnedPath(filepath.Dir(partial), partial, operationID, "rollback-partial"); err != nil {
 		return err
 	}
-	if _, err := CopyTree(dest, partial, CopyOptions{Progress: progress, Context: ctx, Workers: workers}); err != nil {
+	if _, err := CopyTree(dest, partial, CopyOptions{Progress: progress, Context: ctx, Workers: workers, StageWritable: true}); err != nil {
 		return fmt.Errorf("copy vault data to recovery path %q: %w (vault copy intact at %s)", partial, err, dest)
 	}
 	if _, err := VerifyTree(dest, partial, true); err != nil {
 		return fmt.Errorf("verify staged rollback copy %q: %w (vault copy intact at %s)", partial, err, dest)
+	}
+	if err := applyTreeModes(dest, partial); err != nil {
+		return fmt.Errorf("apply original modes to staged rollback copy %q: %w (vault copy intact at %s)", partial, err, dest)
 	}
 	if err := os.Rename(partial, source); err != nil {
 		return fmt.Errorf("commit verified rollback copy to %q: %w", source, err)

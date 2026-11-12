@@ -29,6 +29,13 @@ before publication.
 - Rename the Go module to `github.com/mevarx/Midas` so
   `go install github.com/mevarx/Midas/cmd/midas@latest` resolves; the previous
   path returned 404. Imports, linker flags, and install docs are updated.
+- Fix Unix moves, restores, and rollbacks of trees containing read-only
+  directories: staged copies are created writable, verified, and then given
+  their original modes before the commit rename. Owned-path cleanup clears
+  read-only modes bottom-up without following links, so `.midas-bak` and
+  partial trees can be removed.
+- Add a regression test proving `directChild` rejects nested paths on every
+  platform (Windows `filepath.Rel` returns backslashes).
 - Add bounded opt-in copy workers, reproducible copy/backup benchmarks, and
   separate verification progress.
 - Add read-only `midas plan` / `midas analyze`, four shell completion scripts,

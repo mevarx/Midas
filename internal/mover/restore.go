@@ -95,7 +95,7 @@ func Restore(o RestoreOptions) error {
 		if err := MarkOwnedPath(filepath.Dir(partial), partial, o.OperationID, "restore-partial"); err != nil {
 			return fmt.Errorf("claim restore partial path: %w", err)
 		}
-		if _, err := CopyTree(o.Dest, partial, CopyOptions{Progress: o.Progress, Context: o.Context, Workers: o.Workers}); err != nil {
+		if _, err := CopyTree(o.Dest, partial, CopyOptions{Progress: o.Progress, Context: o.Context, Workers: o.Workers, StageWritable: true}); err != nil {
 			return fmt.Errorf("copy back failed, link and vault copy untouched; partial data preserved at %s: %w", partial, err)
 		}
 		j.State = StateVerifying
@@ -105,6 +105,11 @@ func Restore(o RestoreOptions) error {
 		o.Stage("verifying", "verifying copied data")
 		if _, err := VerifyTreeContext(o.Context, o.Dest, partial, o.Verify == "hash", o.VerifyProgress); err != nil {
 			return fmt.Errorf("%w: %v; link and vault copy untouched", ErrVerifyFailed, err)
+		}
+		// The staged copy was created writable; restore the vault tree's
+		// modes before the commit state and rename.
+		if err := applyTreeModes(o.Dest, partial); err != nil {
+			return fmt.Errorf("apply original modes to staged restore copy: %w; link and vault copy untouched", err)
 		}
 		j.State = StateRenaming
 		if err := SaveJournal(o.Vault, j); err != nil {
