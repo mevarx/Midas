@@ -60,6 +60,12 @@ warning.
 - **Midas makes no network calls**, has no telemetry, and cannot recover data
   from a drive that has physically failed. Keep the backup on a *different*
   drive; `init` asks for this and warns otherwise.
+- **Hard links are not preserved by copies**; linked files are duplicated on
+  cross-volume moves and restores (same-volume moves use a rename and keep
+  them).
+- **Cloud-synced folders** with placeholder/hydration behavior are
+  unsupported; pausing sync and making files local first is the user's
+  responsibility.
 
 ## If something goes wrong
 

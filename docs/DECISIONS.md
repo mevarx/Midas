@@ -126,3 +126,20 @@ taken. Behavior guarantees live in `SAFETY.md`; compatibility policy in
 - **Link replacement**: when an app update replaces a link with a real
   folder, doctor reports both trees and leaves the merge decision to the
   user; automatic merging is not implemented.
+- **Hard links** are not preserved by copies or restores: each name is copied
+  as a separate file, consuming additional space and losing inode identity.
+  Same-volume moves use a single rename and therefore keep the filesystem's
+  hard links intact; cross-volume moves and restores from a backup copy do
+  not.
+- **Cloud-synced folders** (OneDrive Files On-Demand/redirected profiles,
+  Dropbox, iCloud Drive, Google Drive) are unsupported and risky as sources:
+  placeholder/hydration behavior can fail reads or download data during the
+  copy, and the sync client can modify files mid-operation. Midas's
+  source-stability checks abort on detected changes during a copy, but it
+  cannot pause or coordinate with the sync client. Move such folders only
+  after pausing sync and ensuring files are fully local.
+- **Directory metadata**: directory permissions and timestamps are preserved
+  by CopyTree and by restore-from-backup when the set records directory
+  metadata. Sets created before the additive `dirs` field restore files
+  correctly but do not restore directory modes/timestamps; rollback reports
+  this. See `COMPATIBILITY.md`.

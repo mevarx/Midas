@@ -38,6 +38,9 @@ before publication.
   platform (Windows `filepath.Rel` returns backslashes).
 - On Windows, query reparse points only for irregular entries, avoiding two
   filesystem calls for every regular file and directory during tree walks.
+- Document known limitations: hard links are duplicated by copies, cloud-synced
+  placeholder folders are unsupported/risky, and legacy backup sets lack
+  directory metadata.
 - Let read-only commands (`status`, `list`, `plan`, `analyze`, and `doctor`
   without `--repair`) inspect a read-only vault. Mutating commands keep the
   writability check and exit 5.

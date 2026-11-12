@@ -157,6 +157,10 @@ midas apps validate ./my-app.toml
 
 **Network drives?** Not supported. Junctions to network shares are detected and refused.
 
+**What about hard links?** Copies duplicate each linked name; same-volume moves keep them because the tree is renamed.
+
+**Can I move a OneDrive/Dropbox/iCloud folder?** Not supported. Pause sync and make files fully local first; placeholder hydration and sync writes can fail or change files mid-copy.
+
 **Does Midas call home?** No telemetry, no network calls, no auto-update.
 
 ## Documentation
