@@ -14,7 +14,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/midas-cli/midas/internal/platform"
+	"github.com/mevarx/Midas/internal/platform"
 )
 
 // Reporter receives copied byte counts. *ui.Progress satisfies it.

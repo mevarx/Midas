@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/midas-cli/midas/internal/platform"
+	"github.com/mevarx/Midas/internal/platform"
 )
 
 func (c *Ctx) cmdShim(args []string) error {

@@ -30,7 +30,7 @@ See [docs/SAFETY.md](docs/SAFETY.md) for the full guarantee list and [docs/RECOV
 From source (Go 1.26+):
 
 ```
-go install github.com/midas-cli/midas/cmd/midas@latest
+go install github.com/mevarx/Midas/cmd/midas@latest
 ```
 
 Or download a checksum-verified release binary for Windows/Linux/macOS (amd64 or arm64). See [docs/INSTALL.md](docs/INSTALL.md) for checksum verification, upgrades, and uninstall. No admin rights are needed for normal use.

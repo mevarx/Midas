@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/midas-cli/midas/internal/apps"
-	"github.com/midas-cli/midas/internal/backup"
-	"github.com/midas-cli/midas/internal/manifest"
-	"github.com/midas-cli/midas/internal/mover"
-	"github.com/midas-cli/midas/internal/platform"
+	"github.com/mevarx/Midas/internal/apps"
+	"github.com/mevarx/Midas/internal/backup"
+	"github.com/mevarx/Midas/internal/manifest"
+	"github.com/mevarx/Midas/internal/mover"
+	"github.com/mevarx/Midas/internal/platform"
 )
 
 // targetInfo is one target resolved for this host.

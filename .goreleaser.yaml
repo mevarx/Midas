@@ -17,8 +17,8 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X github.com/midas-cli/midas/internal/version.Version={{ .Version }}
-      - -X github.com/midas-cli/midas/internal/version.Commit={{ .Commit }}
+      - -X github.com/mevarx/Midas/internal/version.Version={{ .Version }}
+      - -X github.com/mevarx/Midas/internal/version.Commit={{ .Commit }}
     flags:
       - -trimpath
     mod_timestamp: "{{ .CommitTimestamp }}"

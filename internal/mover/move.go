@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/midas-cli/midas/internal/apps"
-	"github.com/midas-cli/midas/internal/backup"
-	"github.com/midas-cli/midas/internal/manifest"
-	"github.com/midas-cli/midas/internal/platform"
+	"github.com/mevarx/Midas/internal/apps"
+	"github.com/mevarx/Midas/internal/backup"
+	"github.com/mevarx/Midas/internal/manifest"
+	"github.com/mevarx/Midas/internal/platform"
 )
 
 // MoveOptions describes one target move. The caller has already run

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/midas-cli/midas/internal/backup"
-	"github.com/midas-cli/midas/internal/manifest"
-	"github.com/midas-cli/midas/internal/platform"
+	"github.com/mevarx/Midas/internal/backup"
+	"github.com/mevarx/Midas/internal/manifest"
+	"github.com/mevarx/Midas/internal/platform"
 )
 
 // RollbackOptions describes a rollback of one app/target.

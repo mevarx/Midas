@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/midas-cli/midas/internal/platform"
+	"github.com/mevarx/Midas/internal/platform"
 )
 
 func TestLoadRejectsManifestDestinationTraversal(t *testing.T) {

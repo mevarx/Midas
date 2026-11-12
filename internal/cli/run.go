@@ -4,7 +4,7 @@ import (
 	"errors"
 	"flag"
 
-	"github.com/midas-cli/midas/internal/runner"
+	"github.com/mevarx/Midas/internal/runner"
 )
 
 // cmdRun returns the child's exit code directly.

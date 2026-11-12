@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/midas-cli/midas/internal/platform"
+	"github.com/mevarx/Midas/internal/platform"
 )
 
 // Options controls one run.

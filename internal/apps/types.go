@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/midas-cli/midas/internal/platform"
+	"github.com/mevarx/Midas/internal/platform"
 )
 
 // Definition is one app's declarative description. It is untrusted input:

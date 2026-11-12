@@ -10,8 +10,8 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	builtins "github.com/midas-cli/midas/apps"
-	"github.com/midas-cli/midas/internal/platform"
+	builtins "github.com/mevarx/Midas/apps"
+	"github.com/mevarx/Midas/internal/platform"
 )
 
 // ErrNotFound is returned when no definition matches an app id.

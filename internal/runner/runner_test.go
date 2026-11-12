@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/midas-cli/midas/internal/platform"
+	"github.com/mevarx/Midas/internal/platform"
 )
 
 func TestRunRedirectsTempEnvironment(t *testing.T) {

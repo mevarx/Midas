@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/midas-cli/midas/internal/platform"
+	"github.com/mevarx/Midas/internal/platform"
 )
 
 // Journal states.

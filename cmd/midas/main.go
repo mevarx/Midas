@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/midas-cli/midas/internal/cli"
+	"github.com/mevarx/Midas/internal/cli"
 )
 
 func main() {

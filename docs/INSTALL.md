@@ -23,7 +23,7 @@ GitHub Releases page or build it with Go 1.26 or newer.
 ## Build from source
 
 ```sh
-go install github.com/midas-cli/midas/cmd/midas@latest
+go install github.com/mevarx/Midas/cmd/midas@latest
 ```
 
 Use a versioned module path instead of `@latest` when you need a reproducible

@@ -3,7 +3,7 @@ package cli
 import (
 	"flag"
 
-	"github.com/midas-cli/midas/internal/version"
+	"github.com/mevarx/Midas/internal/version"
 )
 
 func (c *Ctx) cmdVersion(args []string) error {

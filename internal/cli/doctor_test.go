@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/midas-cli/midas/internal/config"
-	"github.com/midas-cli/midas/internal/ui"
+	"github.com/mevarx/Midas/internal/config"
+	"github.com/mevarx/Midas/internal/ui"
 )
 
 func TestDoctorDefaultIsReadOnlyForInvalidManifest(t *testing.T) {

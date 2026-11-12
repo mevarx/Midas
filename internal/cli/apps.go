@@ -5,7 +5,7 @@ import (
 	"flag"
 	"os"
 
-	"github.com/midas-cli/midas/internal/apps"
+	"github.com/mevarx/Midas/internal/apps"
 )
 
 func (c *Ctx) cmdApps(args []string) error {

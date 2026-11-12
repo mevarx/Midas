@@ -1,4 +1,4 @@
-module github.com/midas-cli/midas
+module github.com/mevarx/Midas
 
 go 1.26
 

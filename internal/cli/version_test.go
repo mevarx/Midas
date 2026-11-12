@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/midas-cli/midas/internal/config"
-	"github.com/midas-cli/midas/internal/ui"
-	"github.com/midas-cli/midas/internal/version"
+	"github.com/mevarx/Midas/internal/config"
+	"github.com/mevarx/Midas/internal/ui"
+	"github.com/mevarx/Midas/internal/version"
 )
 
 func TestVersionJSONFlagsAfterCommand(t *testing.T) {

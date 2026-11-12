@@ -9,7 +9,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/midas-cli/midas/internal/platform"
+	"github.com/mevarx/Midas/internal/platform"
 )
 
 // Guard supplies the live checks deletion must perform. Callers wire these

@@ -26,6 +26,9 @@ before publication.
 
 ## Unreleased
 
+- Rename the Go module to `github.com/mevarx/Midas` so
+  `go install github.com/mevarx/Midas/cmd/midas@latest` resolves; the previous
+  path returned 404. Imports, linker flags, and install docs are updated.
 - Add bounded opt-in copy workers, reproducible copy/backup benchmarks, and
   separate verification progress.
 - Add read-only `midas plan` / `midas analyze`, four shell completion scripts,

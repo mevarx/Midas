@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/midas-cli/midas/internal/apps"
-	"github.com/midas-cli/midas/internal/backup"
-	"github.com/midas-cli/midas/internal/manifest"
+	"github.com/mevarx/Midas/internal/apps"
+	"github.com/mevarx/Midas/internal/backup"
+	"github.com/mevarx/Midas/internal/manifest"
 )
 
 // longPath builds a directory chain under base whose full path exceeds the

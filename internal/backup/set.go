@@ -17,8 +17,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/midas-cli/midas/internal/manifest"
-	"github.com/midas-cli/midas/internal/platform"
+	"github.com/mevarx/Midas/internal/manifest"
+	"github.com/mevarx/Midas/internal/platform"
 )
 
 // SchemaVersion is the BACKUP.json format version.

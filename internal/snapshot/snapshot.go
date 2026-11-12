@@ -5,7 +5,7 @@ package snapshot
 import (
 	"fmt"
 
-	"github.com/midas-cli/midas/internal/manifest"
+	"github.com/mevarx/Midas/internal/manifest"
 )
 
 // Policy values accepted by Create.

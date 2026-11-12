@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/midas-cli/midas/internal/mover"
-	"github.com/midas-cli/midas/internal/platform"
+	"github.com/mevarx/Midas/internal/mover"
+	"github.com/mevarx/Midas/internal/platform"
 )
 
 func (c *Ctx) cmdInit(args []string) error {

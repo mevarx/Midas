@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/midas-cli/midas/internal/platform"
+	"github.com/mevarx/Midas/internal/platform"
 )
 
 var (

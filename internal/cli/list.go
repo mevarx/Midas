@@ -3,9 +3,9 @@ package cli
 import (
 	"flag"
 
-	"github.com/midas-cli/midas/internal/apps"
-	"github.com/midas-cli/midas/internal/manifest"
-	"github.com/midas-cli/midas/internal/ui"
+	"github.com/mevarx/Midas/internal/apps"
+	"github.com/mevarx/Midas/internal/manifest"
+	"github.com/mevarx/Midas/internal/ui"
 )
 
 type listRow struct {

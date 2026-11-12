@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/midas-cli/midas/internal/platform"
-	"github.com/midas-cli/midas/internal/version"
+	"github.com/mevarx/Midas/internal/platform"
+	"github.com/mevarx/Midas/internal/version"
 )
 
 // SchemaVersion is the manifest format version.
