@@ -38,6 +38,8 @@ before publication.
   platform (Windows `filepath.Rel` returns backslashes).
 - On Windows, query reparse points only for irregular entries, avoiding two
   filesystem calls for every regular file and directory during tree walks.
+- Update BurntSushi/toml to v1.6.0, gopsutil/v4 to v4.26.10, and
+  golang.org/x/sys to v0.50.0; tidy the module graph.
 - CI runs `go test -race` on Ubuntu and macOS, adds pinned staticcheck and
   govulncheck steps, and enables weekly Dependabot updates for Go modules and
   GitHub Actions.
