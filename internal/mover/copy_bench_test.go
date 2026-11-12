@@ -57,7 +57,7 @@ func BenchmarkCopyVerify(b *testing.B) {
 							if _, err := CopyTree(source, dest, CopyOptions{Workers: workers}); err != nil {
 								b.Fatal(err)
 							}
-							if _, err := VerifyTree(source, dest, hash); err != nil {
+							if _, err := VerifyTreeContext(context.Background(), source, dest, hash, workers, nil); err != nil {
 								b.Fatal(err)
 							}
 							if err := os.RemoveAll(dest); err != nil {
@@ -65,6 +65,45 @@ func BenchmarkCopyVerify(b *testing.B) {
 							}
 						}
 					})
+				}
+			}
+		})
+	}
+}
+
+// BenchmarkHashVerifyWorkers isolates hash verification cost: the fixture is
+// copied once, so the timed loop measures only VerifyTreeContext hashing.
+func BenchmarkHashVerifyWorkers(b *testing.B) {
+	const (
+		files = 128
+		size  = 64 << 10
+	)
+	root := b.TempDir()
+	source := filepath.Join(root, "source")
+	if err := os.Mkdir(source, 0o700); err != nil {
+		b.Fatal(err)
+	}
+	data := make([]byte, size)
+	for i := range data {
+		data[i] = byte(i * 29)
+	}
+	for i := range files {
+		if err := os.WriteFile(filepath.Join(source, fmt.Sprintf("%06d.dat", i)), data, 0o600); err != nil {
+			b.Fatal(err)
+		}
+	}
+	dest := filepath.Join(root, "dest")
+	if _, err := CopyTree(source, dest, CopyOptions{Workers: 4}); err != nil {
+		b.Fatal(err)
+	}
+	for _, workers := range []int{1, 4} {
+		b.Run(fmt.Sprintf("workers=%d", workers), func(b *testing.B) {
+			b.ReportAllocs()
+			b.SetBytes(int64(files * size))
+			b.ResetTimer()
+			for range b.N {
+				if _, err := VerifyTreeContext(context.Background(), source, dest, true, workers, nil); err != nil {
+					b.Fatal(err)
 				}
 			}
 		})
@@ -111,7 +150,7 @@ func BenchmarkCrossVolumeCopy(b *testing.B) {
 				if _, err := CopyTree(source, dest, CopyOptions{Workers: workers, Context: context.Background()}); err != nil {
 					b.Fatal(err)
 				}
-				if _, err := VerifyTree(source, dest, false); err != nil {
+				if _, err := VerifyTreeContext(context.Background(), source, dest, false, workers, nil); err != nil {
 					b.Fatal(err)
 				}
 				if err := os.RemoveAll(base); err != nil {

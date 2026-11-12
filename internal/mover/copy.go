@@ -55,6 +55,26 @@ type copyTask struct {
 
 const copyBufSize = 1 << 20
 
+// copyBufPool recycles copy/hash buffers so a tree of many files does not
+// churn one megabyte per file. Buffers are returned before the function that
+// took them exits, so no pool entry can alias live data.
+var copyBufPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, copyBufSize)
+		return &buf
+	},
+}
+
+func getCopyBuf() *[]byte { return copyBufPool.Get().(*[]byte) }
+
+func putCopyBuf(buf *[]byte) {
+	if buf == nil || cap(*buf) < copyBufSize {
+		return
+	}
+	*buf = (*buf)[:copyBufSize]
+	copyBufPool.Put(buf)
+}
+
 // CopyTree copies src to dst, preserving structure, modes, file and directory
 // timestamps, and links (recreated, never followed). Directory timestamps are
 // applied after their children are written, so they match the source. dst must
@@ -512,7 +532,9 @@ func copyRegular(ctx context.Context, src, dst string, fi os.FileInfo, perm os.F
 			_ = out.Close()
 		}
 	}()
-	buf := make([]byte, copyBufSize)
+	bufp := getCopyBuf()
+	defer putCopyBuf(bufp)
+	buf := *bufp
 	var n int64
 	for {
 		select {
@@ -618,19 +640,40 @@ func TreeSnapshot(root string) (map[string]string, error) {
 func SameTreeSnapshot(a, b map[string]string) bool { return reflect.DeepEqual(a, b) }
 
 // VerifyTree compares src and dst by count, size and (optionally) hash.
-// It never follows links.
+// It never follows links. Verification runs sequentially.
 func VerifyTree(src, dst string, hash bool) (Stats, error) {
-	return VerifyTreeContext(context.Background(), src, dst, hash, nil)
+	return VerifyTreeContext(context.Background(), src, dst, hash, 1, nil)
 }
 
-// VerifyTreeContext compares two trees while supporting cancellation and a
-// separate verification progress reporter.
-func VerifyTreeContext(ctx context.Context, src, dst string, hash bool, progress Reporter) (Stats, error) {
+// maxVerifyWorkers bounds hash verification concurrency.
+const maxVerifyWorkers = 16
+
+// hashTask is one source/destination file pair whose hashes are compared in
+// the parallel phase. index is its position in walk order, so problems can be
+// emitted deterministically regardless of worker count.
+type hashTask struct {
+	index   int
+	rel     string
+	srcPath string
+	dstPath string
+}
+
+// VerifyTreeContext compares two trees while supporting cancellation, parallel
+// hash comparison, and a separate verification progress reporter. workers is
+// clamped to [1, maxVerifyWorkers]; structural checks always run sequentially.
+func VerifyTreeContext(ctx context.Context, src, dst string, hash bool, workers int, progress Reporter) (Stats, error) {
 	var st Stats
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if workers < 1 {
+		workers = 1
+	}
+	if workers > maxVerifyWorkers {
+		workers = maxVerifyWorkers
+	}
 	var problems []string
+	var tasks []hashTask
 	srcCount := 0
 	dstCount := 0
 
@@ -693,18 +736,24 @@ func VerifyTreeContext(ctx context.Context, src, dst string, hash bool, progress
 			return nil
 		}
 		if hash {
-			h1, err1 := hashFileContext(ctx, p)
-			h2, err2 := hashFileContext(ctx, tp)
-			if err1 != nil || err2 != nil {
-				problems = append(problems, fmt.Sprintf("%s: cannot hash (%v / %v)", rel, err1, err2))
-			} else if h1 != h2 {
-				problems = append(problems, rel+": hash mismatch")
-			}
+			tasks = append(tasks, hashTask{index: len(tasks), rel: rel, srcPath: p, dstPath: tp})
 		}
 		return nil
 	})
 	if err != nil {
 		return st, err
+	}
+
+	if hash {
+		hashProblems, herr := verifyHashes(ctx, workers, tasks)
+		if herr != nil {
+			return st, herr
+		}
+		for _, problem := range hashProblems {
+			if problem != "" {
+				problems = append(problems, problem)
+			}
+		}
 	}
 
 	_ = filepath.WalkDir(dst, func(p string, d fs.DirEntry, err error) error {
@@ -725,6 +774,53 @@ func VerifyTreeContext(ctx context.Context, src, dst string, hash bool, progress
 		return st, fmt.Errorf("verification failed (%d problem(s)):\n  %s", len(problems), strings.Join(shown, "\n  "))
 	}
 	return st, nil
+}
+
+// verifyHashes compares hashes with up to workers goroutines. Each task writes
+// only its own problems slot, so no mutex is needed, and callers can emit the
+// non-empty slots in index order. When the context is canceled the pool drains
+// and ctx.Err() is returned instead of partial results.
+func verifyHashes(ctx context.Context, workers int, tasks []hashTask) ([]string, error) {
+	problems := make([]string, len(tasks))
+	if len(tasks) == 0 {
+		return problems, nil
+	}
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for range workers {
+		go func() {
+			defer wg.Done()
+			for index := range jobs {
+				if ctx.Err() != nil {
+					return
+				}
+				task := tasks[index]
+				h1, err1 := hashFileContext(ctx, task.srcPath)
+				h2, err2 := hashFileContext(ctx, task.dstPath)
+				switch {
+				case err1 != nil || err2 != nil:
+					problems[index] = fmt.Sprintf("%s: cannot hash (%v / %v)", task.rel, err1, err2)
+				case h1 != h2:
+					problems[index] = task.rel + ": hash mismatch"
+				}
+			}
+		}()
+	}
+send:
+	for _, task := range tasks {
+		select {
+		case <-ctx.Done():
+			break send
+		case jobs <- task.index:
+		}
+	}
+	close(jobs)
+	wg.Wait()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return problems, nil
 }
 
 func sameLinkTarget(a, b, srcRoot, dstRoot, srcPath, dstPath string) bool {
@@ -777,7 +873,9 @@ func hashFileContext(ctx context.Context, p string) (string, error) {
 	}
 	defer f.Close()
 	h := sha256.New()
-	buf := make([]byte, copyBufSize)
+	bufp := getCopyBuf()
+	defer putCopyBuf(bufp)
+	buf := *bufp
 	for {
 		select {
 		case <-ctx.Done():

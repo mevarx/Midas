@@ -38,6 +38,9 @@ before publication.
   platform (Windows `filepath.Rel` returns backslashes).
 - On Windows, query reparse points only for irregular entries, avoiding two
   filesystem calls for every regular file and directory during tree walks.
+- Pool the 1 MiB copy and hash buffers and verify file hashes in parallel
+  with the existing bounded copy-worker count, keeping the problem list
+  deterministic. Add a hash-verification benchmark.
 - Update BurntSushi/toml to v1.6.0, gopsutil/v4 to v4.26.10, and
   golang.org/x/sys to v0.50.0; tidy the module graph.
 - CI runs `go test -race` on Ubuntu and macOS, adds pinned staticcheck and

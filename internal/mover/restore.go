@@ -103,7 +103,7 @@ func Restore(o RestoreOptions) error {
 			return fmt.Errorf("write restore verification state: %w", err)
 		}
 		o.Stage("verifying", "verifying copied data")
-		if _, err := VerifyTreeContext(o.Context, o.Dest, partial, o.Verify == "hash", o.VerifyProgress); err != nil {
+		if _, err := VerifyTreeContext(o.Context, o.Dest, partial, o.Verify == "hash", o.Workers, o.VerifyProgress); err != nil {
 			return fmt.Errorf("%w: %v; link and vault copy untouched", ErrVerifyFailed, err)
 		}
 		// The staged copy was created writable; restore the vault tree's

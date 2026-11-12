@@ -333,7 +333,7 @@ func placeFromVault(dest, source string, rep *RollbackReport, progress Reporter,
 	if _, err := CopyTree(dest, partial, CopyOptions{Progress: progress, Context: ctx, Workers: workers, StageWritable: true}); err != nil {
 		return fmt.Errorf("copy vault data to recovery path %q: %w (vault copy intact at %s)", partial, err, dest)
 	}
-	if _, err := VerifyTree(dest, partial, true); err != nil {
+	if _, err := VerifyTreeContext(ctx, dest, partial, true, workers, nil); err != nil {
 		return fmt.Errorf("verify staged rollback copy %q: %w (vault copy intact at %s)", partial, err, dest)
 	}
 	if err := applyTreeModes(dest, partial); err != nil {
@@ -365,7 +365,7 @@ func restoreFromSet(s *backup.Set, source string, progress Reporter, ctx context
 	if _, err := CopyTree(s.FilesDir(), partial, CopyOptions{Progress: progress, Context: ctx, Workers: workers, StageWritable: true}); err != nil {
 		return fmt.Errorf("restore from backup %s: %w", s.ID, err)
 	}
-	if _, err := VerifyTree(s.FilesDir(), partial, true); err != nil {
+	if _, err := VerifyTreeContext(ctx, s.FilesDir(), partial, true, workers, nil); err != nil {
 		return fmt.Errorf("verify backup restore staging path %s: %w", partial, err)
 	}
 	if err := os.Rename(partial, source); err != nil {

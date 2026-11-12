@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mevarx/Midas/internal/apps"
@@ -43,6 +44,26 @@ type Estimate struct {
 }
 
 const copyBufferSize = 1 << 20
+
+// copyBufPool recycles copy/hash buffers so a backup set with many files does
+// not churn one megabyte per file. Buffers are returned before the function
+// that took them exits, so no pool entry can alias live data.
+var copyBufPool = sync.Pool{
+	New: func() any {
+		buf := make([]byte, copyBufferSize)
+		return &buf
+	},
+}
+
+func getCopyBuf() *[]byte { return copyBufPool.Get().(*[]byte) }
+
+func putCopyBuf(buf *[]byte) {
+	if buf == nil || cap(*buf) < copyBufferSize {
+		return
+	}
+	*buf = (*buf)[:copyBufferSize]
+	copyBufPool.Put(buf)
+}
 
 // copyFileHook exists only so tests can mutate the open source between the
 // before-Stat and the copy loop deterministically. It is nil in production.
@@ -343,8 +364,9 @@ func copyFile(src, dst string, fi os.FileInfo) (File, int64, error) {
 		return File{}, 0, fmt.Errorf("create backup copy of %q: %w", src, err)
 	}
 	h := sha256.New()
-	buf := make([]byte, copyBufferSize)
-	n, err := io.CopyBuffer(io.MultiWriter(out, h), in, buf)
+	bufp := getCopyBuf()
+	defer putCopyBuf(bufp)
+	n, err := io.CopyBuffer(io.MultiWriter(out, h), in, *bufp)
 	if cerr := out.Close(); err == nil {
 		err = cerr
 	}
@@ -446,7 +468,9 @@ func hashFile(p string) (string, error) {
 	}
 	defer f.Close()
 	h := sha256.New()
-	if _, err := io.CopyBuffer(h, f, make([]byte, copyBufferSize)); err != nil {
+	bufp := getCopyBuf()
+	defer putCopyBuf(bufp)
+	if _, err := io.CopyBuffer(h, f, *bufp); err != nil {
 		return "", err
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil

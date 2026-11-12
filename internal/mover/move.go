@@ -215,7 +215,7 @@ func MoveTarget(o MoveOptions) (entry manifest.Entry, err error) {
 		if err := SaveJournal(o.Vault, j); err != nil {
 			return entry, err
 		}
-		if _, verr := VerifyTreeContext(o.Context, o.Source, partial, o.Verify == "hash", o.VerifyProgress); verr != nil {
+		if _, verr := VerifyTreeContext(o.Context, o.Source, partial, o.Verify == "hash", o.Workers, o.VerifyProgress); verr != nil {
 			return entry, fmt.Errorf("%w: %v", ErrVerifyFailed, verr)
 		}
 		// The staged copy was created writable; restore the original modes
