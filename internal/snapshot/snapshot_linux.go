@@ -15,10 +15,10 @@ func createSnapshot() (string, int, error) {
 		if isBtrfsRoot() {
 			return "", 0, fmt.Errorf("no automatic snapshot tool; the root filesystem is btrfs, so you could run `btrfs subvolume snapshot / /snapshots/pre-midas` by hand. The verified file backup below is the safety net")
 		}
-		return "", 0, fmt.Errorf("Timeshift is not installed; install it or accept the file backup as the safety net")
+		return "", 0, fmt.Errorf("timeshift is not installed; install it or accept the file backup as the safety net")
 	}
 	if os.Geteuid() != 0 {
-		return "", 0, fmt.Errorf("Timeshift snapshots need root; run Midas with sudo or accept the file backup as the safety net")
+		return "", 0, fmt.Errorf("timeshift snapshots need root; run Midas with sudo or accept the file backup as the safety net")
 	}
 	out, err := exec.Command(ts, "--create", "--comments", "Midas pre-move", "--scripted").CombinedOutput()
 	if err != nil {
