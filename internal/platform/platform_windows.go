@@ -172,11 +172,11 @@ func (windowsPlatform) ReadLink(path string) (string, bool, error) {
 		}
 		return t, true, nil
 	}
-	// Mount-point reparse point (directory junction). Go 1.23+ reports
-	// junctions as irregular files (`os.ModeIrregular`, not a directory),
-	// so this must not be gated on IsDir. A reparse query on a regular
-	// file or directory just answers "not a reparse point".
-	if fi.Mode().IsRegular() || fi.IsDir() || fi.Mode()&os.ModeIrregular != 0 {
+	// Mount-point reparse point (directory junction). Current Go reports
+	// junctions as irregular files (`os.ModeIrregular`, not a directory), so
+	// the reparse query runs only for entries that can be junctions. Regular
+	// files and directories return false here without a filesystem call.
+	if fi.Mode()&os.ModeIrregular != 0 {
 		t, ok, err := readMountPoint(path)
 		if err != nil || !ok {
 			return "", ok, err

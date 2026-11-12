@@ -12,6 +12,10 @@ two file handles, in addition to the tree walk and operating-system overhead.
 File-path metadata and case-collision tracking are proportional to the source
 tree size.
 
+On Windows, link inspection queries reparse points only for entries Go reports
+as irregular (junctions); regular files and directories are classified from
+`os.Lstat` alone, avoiding two filesystem calls per entry.
+
 Parallel copying is opt-in because small-file performance can regress on some
 systems. The benchmark fixture compares sequential and four-worker copies for
 many small files and fewer large files, with basic and SHA-256 verification,

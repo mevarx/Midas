@@ -36,6 +36,8 @@ before publication.
   partial trees can be removed.
 - Add a regression test proving `directChild` rejects nested paths on every
   platform (Windows `filepath.Rel` returns backslashes).
+- On Windows, query reparse points only for irregular entries, avoiding two
+  filesystem calls for every regular file and directory during tree walks.
 - Re-run the app-running check immediately before swapping the original
   aside and immediately before deleting `.midas-bak`; a detection aborts into
   the existing rollback path. `docs/SAFETY.md` documents the residual
