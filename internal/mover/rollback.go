@@ -27,7 +27,6 @@ type RollbackOptions struct {
 	Dest        string
 	BackupSet   *backup.Set
 	Manifest    *manifest.Manifest
-	Force       bool
 	DryRun      bool
 	Automatic   bool
 	// Prefer forces a source: auto, bak, vault or backup.
@@ -203,7 +202,7 @@ func Rollback(o RollbackOptions) (rep *RollbackReport, returnErr error) {
 	restored := false
 	switch {
 	case prefer == "bak" || (prefer == "auto" && bakExists):
-		if err := clearOriginal(o.Source, isLink, rep, o.Force); err != nil {
+		if err := clearOriginal(o.Source, isLink, rep); err != nil {
 			return rep, err
 		}
 		if err := os.Rename(bak, o.Source); err != nil {
@@ -215,7 +214,7 @@ func Rollback(o RollbackOptions) (rep *RollbackReport, returnErr error) {
 		restored = true
 
 	case prefer == "backup":
-		if err := clearOriginal(o.Source, isLink, rep, o.Force); err != nil {
+		if err := clearOriginal(o.Source, isLink, rep); err != nil {
 			return rep, err
 		}
 		if err := restoreFromSet(o.BackupSet, o.Source, o.Progress, o.Context, o.Workers, operationID, func(format string, a ...any) {
@@ -237,7 +236,7 @@ func Rollback(o RollbackOptions) (rep *RollbackReport, returnErr error) {
 				return rep, fmt.Errorf("remove link %q: %w", o.Source, err)
 			}
 		} else if srcExists {
-			if err := clearOriginal(o.Source, false, rep, o.Force); err != nil {
+			if err := clearOriginal(o.Source, false, rep); err != nil {
 				return rep, err
 			}
 		}
@@ -299,7 +298,7 @@ func Rollback(o RollbackOptions) (rep *RollbackReport, returnErr error) {
 	return rep, nil
 }
 
-func clearOriginal(source string, isLink bool, rep *RollbackReport, force bool) error {
+func clearOriginal(source string, isLink bool, rep *RollbackReport) error {
 	if !PathExists(source) {
 		return nil
 	}

@@ -141,7 +141,7 @@ func (c *Ctx) cmdResume(args []string) error {
 		App: appID, Target: apps.Target{Name: target.Name}, Resume: true, OperationID: j.OperationID,
 		Context: c.Context, Workers: *workers,
 		Source: target.Source, Dest: target.Dest, Vault: vault, Verify: c.Cfg.Verify,
-		Force: *force, BackupSet: set, NoBackupConfirmed: j.NoBackup,
+		BackupSet: set, NoBackupConfirmed: j.NoBackup,
 		SourceBytes: bytes, SourceFiles: files, Manifest: m,
 		Warn:  func(f string, a ...any) { c.UI.Warnf(f, a...) },
 		Stage: func(stage, detail string) { c.UI.Verbosef("%s: %s", stage, detail) },

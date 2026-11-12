@@ -27,7 +27,6 @@ type MoveOptions struct {
 	Dest              string
 	Vault             string
 	Verify            string // "size" or "hash"
-	Force             bool
 	BackupSet         *backup.Set
 	NoBackupConfirmed bool // set only when the user explicitly typed the confirmation
 	SourceBytes       uint64
@@ -165,7 +164,7 @@ func MoveTarget(o MoveOptions) (entry manifest.Entry, err error) {
 				OperationID: o.OperationID, Context: o.Context,
 				Workers: o.Workers,
 				Source:  o.Source, Dest: o.Dest, BackupSet: o.BackupSet,
-				Manifest: o.Manifest, Force: true, Automatic: true,
+				Manifest: o.Manifest, Automatic: true,
 				Warn: o.Warn,
 			}
 			if _, rbErr := Rollback(rb); rbErr != nil {

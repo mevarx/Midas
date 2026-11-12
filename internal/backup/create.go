@@ -524,10 +524,6 @@ func (s selector) decide(rel string, size int64) (bool, string) {
 	return false, "" // outside essential scope; counted as not covered
 }
 
-func jsonMarshal(v any) ([]byte, error) {
-	return json.Marshal(v)
-}
-
 // removeTree is the internal cleanup used when a set was never verified.
 // Exported deletion still goes only through Delete.
 func removeTree(root string) {

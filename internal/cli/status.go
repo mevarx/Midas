@@ -43,6 +43,8 @@ func (c *Ctx) cmdStatus(args []string) error {
 	if err != nil {
 		return err
 	}
+	// The documented "<N>d" retention policy is swept on later runs.
+	c.sweepRetention(vault)
 	m, err := manifest.Load(vault)
 	if err != nil {
 		return failf(ExitUnhealthy, "%v", err)

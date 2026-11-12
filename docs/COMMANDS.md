@@ -12,7 +12,7 @@ Global options may precede or follow a command: `--vault`, `--config`,
 | `plan <app>` / `analyze <app>` | Definitions, source trees, available-space metadata | None; estimates only |
 | `move <app>` | Source, config, backup and vault state | Backup, journal, verified copy/rename, link, manifest |
 | `resume <app>` | Journal, source, destination, backup | Restarts only a validated owned move-copy checkpoint |
-| `status` | Manifest, links, journals, available space | None |
+| `status` | Manifest, links, journals, available space | None, except an explicit `<N>d` retention sweep may delete expired backup sets |
 | `doctor` | Manifest, journals, backups, links, partial/orphan state | None unless `--repair` is explicit |
 | `restore <app>` | Manifest, vault copy, source state | Restore journal, verified original copy/link, manifest |
 | `rollback <app>` | Journal, original, vault, backup | Recovery journal and verified restoration |

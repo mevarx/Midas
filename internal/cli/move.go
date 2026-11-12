@@ -338,7 +338,6 @@ func (c *Ctx) cmdMove(args []string) error {
 			Dest:              it.target.Dest,
 			Vault:             vault,
 			Verify:            c.Cfg.Verify,
-			Force:             *force,
 			BackupSet:         set,
 			NoBackupConfirmed: mode == backup.ModeNone,
 			SourceBytes:       it.bytes,

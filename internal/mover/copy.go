@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -326,7 +326,6 @@ type copyPool struct {
 	firstErrIndex int
 	totals        copyTotals
 	nextIndex     int
-	progress      Reporter
 }
 
 type lockedReporter struct {
@@ -362,13 +361,11 @@ func startCopyPool(ctx context.Context, workers int, progress Reporter) (*copyPo
 		results:       make(chan copyResult, workers),
 		collectorDone: make(chan struct{}),
 		firstErrIndex: int(^uint(0) >> 1),
-		progress:      progress,
 	}
 	reporter := progress
 	if progress != nil && workers > 1 {
 		reporter = &lockedReporter{r: progress}
 	}
-	pool.progress = reporter
 	for range workers {
 		pool.workerGroup.Add(1)
 		go func() {
@@ -408,12 +405,6 @@ func startCopyPool(ctx context.Context, workers int, progress Reporter) (*copyPo
 		}
 	}()
 	return pool, nil
-}
-
-func (p *copyPool) addFile() {
-	if reporter, ok := p.progress.(interface{ AddFile() }); ok {
-		reporter.AddFile()
-	}
 }
 
 func (p *copyPool) submit(task copyTask) error {
@@ -637,7 +628,7 @@ func TreeSnapshot(root string) (map[string]string, error) {
 }
 
 // SameTreeSnapshot reports whether two metadata snapshots match.
-func SameTreeSnapshot(a, b map[string]string) bool { return reflect.DeepEqual(a, b) }
+func SameTreeSnapshot(a, b map[string]string) bool { return maps.Equal(a, b) }
 
 // VerifyTree compares src and dst by count, size and (optionally) hash.
 // It never follows links. Verification runs sequentially.

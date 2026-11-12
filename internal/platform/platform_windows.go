@@ -56,8 +56,6 @@ func longPath(p string) string {
 	return `\\?\` + p
 }
 
-func u16ptr(s *uint16) uintptr { return uintptr(unsafe.Pointer(s)) }
-
 // CreateLink creates a directory junction at link pointing to target.
 // It uses the reparse-point API directly and falls back to `cmd /c mklink /J`.
 func (windowsPlatform) CreateLink(link, target string) error {

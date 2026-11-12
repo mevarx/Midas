@@ -38,6 +38,11 @@ before publication.
   platform (Windows `filepath.Rel` returns backslashes).
 - On Windows, query reparse points only for irregular entries, avoiding two
   filesystem calls for every regular file and directory during tree walks.
+- Remove provably unused code (`copyPool.addFile`, `jsonMarshal`, `u16ptr`,
+  and unused force option fields/parameters) and use `maps.Equal` for tree
+  snapshots.
+- Restore the documented `<N>d` backup-retention sweep in `midas status`, now
+  performed under the vault lock; the status row in COMMANDS.md says so.
 - Pool the 1 MiB copy and hash buffers and verify file hashes in parallel
   with the existing bounded copy-worker count, keeping the problem list
   deterministic. Add a hash-verification benchmark.

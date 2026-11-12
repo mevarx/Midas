@@ -120,7 +120,7 @@ func (c *Ctx) cmdRollback(args []string) error {
 			Context: c.Context, Workers: *workers,
 			Source: t.Source, Dest: t.Dest,
 			BackupSet: set, Manifest: m,
-			Force: *force, DryRun: c.G.DryRun, Prefer: *source,
+			DryRun: c.G.DryRun, Prefer: *source,
 			Warn: func(f string, a ...any) { c.UI.Warnf(f, a...) },
 		})
 		if rerr != nil {

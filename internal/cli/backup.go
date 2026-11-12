@@ -310,6 +310,14 @@ func (c *Ctx) sweepRetention(vault string) {
 	if err != nil || days <= 0 {
 		return
 	}
+	// Deletion is a mutation: take the vault lock so a concurrent move cannot
+	// race the sweep. status still reports when the lock is unavailable.
+	release, err := c.acquireVaultLock(vault)
+	if err != nil {
+		c.UI.Warnf("retention sweep skipped: %v", err)
+		return
+	}
+	defer release()
 	sets, err := c.backupManager(vault).List("")
 	if err != nil {
 		return
