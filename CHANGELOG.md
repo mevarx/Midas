@@ -38,6 +38,9 @@ before publication.
   platform (Windows `filepath.Rel` returns backslashes).
 - On Windows, query reparse points only for irregular entries, avoiding two
   filesystem calls for every regular file and directory during tree walks.
+- Fix `HealthCheck` to check the byte read through the link, descend when no
+  top-level file exists, and reuse a single directory listing. An unreadable
+  file through the link now reports it unhealthy instead of silently passing.
 - Record directory paths, modes, and timestamps in BACKUP.json (additive
   `dirs` within schema 1, including empty directories) and restore them
   bottom-up. Older sets still restore and report that directory metadata was

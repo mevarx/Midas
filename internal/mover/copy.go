@@ -821,26 +821,72 @@ func HealthCheck(original, dest string) (healthy bool, detail string) {
 	if !fi.IsDir() {
 		return false, "link target is not a directory"
 	}
-	if _, err := os.ReadDir(dest); err != nil {
+	entries, err := os.ReadDir(dest)
+	if err != nil {
 		return false, "link target is not readable: " + err.Error()
 	}
-	// Read one file through the link, exactly as an app would.
-	if entries, err := os.ReadDir(dest); err == nil {
-		for _, e := range entries {
-			if e.IsDir() {
-				continue
-			}
-			f, err := os.Open(filepath.Join(original, e.Name()))
-			if err != nil {
-				return false, "cannot read a file through the link: " + err.Error()
-			}
-			buf := make([]byte, 1)
-			_, _ = f.Read(buf)
-			f.Close()
-			break
-		}
+	// Read one file through the link, exactly as an app would. A vault with no
+	// top-level file is still checked further down the tree; only a tree with
+	// no regular file at all skips the read-through.
+	rel, ok := healthCheckFile(dest, "", entries, 0)
+	if !ok {
+		return true, "link is readable; no regular file exists to read through the link"
+	}
+	through := filepath.Join(original, rel)
+	f, err := os.Open(through)
+	if err != nil {
+		return false, fmt.Sprintf("cannot open %s through the link: %v", through, err)
+	}
+	buf := make([]byte, 1)
+	_, readErr := f.Read(buf)
+	_ = f.Close()
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
+		return false, fmt.Sprintf("cannot read %s through the link: %v", through, readErr)
 	}
 	return true, ""
+}
+
+// healthCheckMaxDepth bounds the descent HealthCheck performs to find a file to
+// read through the link, so the check stays cheap on a deep vault tree.
+const healthCheckMaxDepth = 8
+
+// healthCheckFile finds a regular file beneath dest, preferring entries of dir
+// (the already-read listing of dest) over subdirectories, and returns its path
+// relative to dest. Links are skipped so a link cycle can never be followed,
+// and directories are descended only up to healthCheckMaxDepth.
+func healthCheckFile(dir, rel string, entries []os.DirEntry, depth int) (string, bool) {
+	type subdir struct{ full, rel string }
+	var subdirs []subdir
+	for _, e := range entries {
+		full := filepath.Join(dir, e.Name())
+		child := e.Name()
+		if rel != "" {
+			child = filepath.Join(rel, e.Name())
+		}
+		if _, isLink, err := platform.Current().ReadLink(full); err != nil || isLink {
+			continue
+		}
+		if e.IsDir() {
+			subdirs = append(subdirs, subdir{full: full, rel: child})
+			continue
+		}
+		if e.Type().IsRegular() {
+			return child, true
+		}
+	}
+	if depth >= healthCheckMaxDepth {
+		return "", false
+	}
+	for _, sub := range subdirs {
+		subEntries, err := os.ReadDir(sub.full)
+		if err != nil {
+			continue
+		}
+		if found, ok := healthCheckFile(sub.full, sub.rel, subEntries, depth+1); ok {
+			return found, true
+		}
+	}
+	return "", false
 }
 
 // PathExists reports whether p exists (link or not).
