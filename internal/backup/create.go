@@ -44,6 +44,10 @@ type Estimate struct {
 
 const copyBufferSize = 1 << 20
 
+// copyFileHook exists only so tests can mutate the open source between the
+// before-Stat and the copy loop deterministically. It is nil in production.
+var copyFileHook func(src string)
+
 // EstimateBackup walks the source without changing anything.
 func EstimateBackup(src, mode string, rule apps.BackupRule) (Estimate, error) {
 	var est Estimate
@@ -286,6 +290,17 @@ func copyFile(src, dst string, fi os.FileInfo) (File, int64, error) {
 	}
 	defer in.Close()
 
+	before, err := in.Stat()
+	if err != nil {
+		return File{}, 0, fmt.Errorf("stat %q before backup: %w", src, err)
+	}
+	if !os.SameFile(fi, before) || before.Size() != fi.Size() || !before.ModTime().Equal(fi.ModTime()) {
+		return File{}, 0, fmt.Errorf("source %q changed before it could be backed up", src)
+	}
+	if copyFileHook != nil {
+		copyFileHook(src)
+	}
+
 	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, fi.Mode().Perm())
 	if err != nil {
 		return File{}, 0, fmt.Errorf("create backup copy of %q: %w", src, err)
@@ -298,6 +313,13 @@ func copyFile(src, dst string, fi os.FileInfo) (File, int64, error) {
 	}
 	if err != nil {
 		return File{}, n, fmt.Errorf("copy %q: %w", src, err)
+	}
+	after, err := in.Stat()
+	if err != nil {
+		return File{}, n, fmt.Errorf("stat %q after backup: %w", src, err)
+	}
+	if !os.SameFile(before, after) || before.Size() != after.Size() || !before.ModTime().Equal(after.ModTime()) || n != before.Size() {
+		return File{}, n, fmt.Errorf("source %q changed during backup; the set is discarded", src)
 	}
 	if err := os.Chtimes(dst, fi.ModTime(), fi.ModTime()); err != nil {
 		return File{}, n, fmt.Errorf("set timestamp on backup copy of %q: %w", src, err)

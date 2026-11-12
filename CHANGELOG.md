@@ -36,6 +36,9 @@ before publication.
   partial trees can be removed.
 - Add a regression test proving `directChild` rejects nested paths on every
   platform (Windows `filepath.Rel` returns backslashes).
+- Verify each backup source file did not change during its copy (same file,
+  size, modification time, and byte count). A torn backup set is discarded
+  instead of being marked verified.
 - Add bounded opt-in copy workers, reproducible copy/backup benchmarks, and
   separate verification progress.
 - Add read-only `midas plan` / `midas analyze`, four shell completion scripts,
