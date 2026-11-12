@@ -27,6 +27,26 @@ guarantees, what it does not, and how to recover by hand.
 7. **No silent fallback.** If the vault is unreachable, commands fail with exit
    code 5. `run --allow-fallback` is the only opt-in.
 
+### The app-running check is point-in-time
+
+Midas asks the OS whether the app's processes are running before a move, again
+immediately before it swaps the original aside (just before the link is
+created), and again immediately before it deletes `<original>.midas-bak`. That
+is all a process check can be: a snapshot. An app can start between the last
+check and the rename or unlink that follows, and Midas cannot eliminate that
+race.
+
+On Unix this matters most: a process that is already running with open file
+descriptors keeps writing to whatever inode those descriptors refer to, even
+after the path was renamed to `.midas-bak` or the link was put in place. Such
+writes land in the moved-aside tree, not in the vault copy. Midas rechecks at
+both destructive points and aborts into rollback if it catches the app, but a
+start in the instant after a check is invisible to it.
+
+You must close the app before moving its data. `--force` skips the check
+entirely and is not a way to make a running app safe; it only suppresses the
+warning.
+
 ## What Midas does not do
 
 - **Restore points are not a backup of your profile.** Windows System Restore

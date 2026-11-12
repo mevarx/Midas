@@ -37,7 +37,18 @@ type MoveOptions struct {
 	VerifyProgress    Reporter
 	Stage             func(stage, detail string)
 	Warn              func(format string, a ...any)
+	// Recheck is a point-in-time app-running check re-run before destructive
+	// transitions. It is called immediately before the original is swapped
+	// aside and again immediately before the untouched original is removed.
+	// A non-nil error aborts the move into the automatic rollback. A nil
+	// Recheck means no check is performed.
+	Recheck func() error
 }
+
+// sameVolumeCheck is the volume decision used by MoveTarget. It exists only
+// so tests can exercise the cross-volume copy path on a single-volume runner;
+// production never assigns it.
+var sameVolumeCheck = SameVolume
 
 // MoveTarget runs the journaled move state machine for one target. On any
 // failure after the safety net it performs an automatic rollback before
@@ -170,7 +181,7 @@ func MoveTarget(o MoveOptions) (entry manifest.Entry, err error) {
 		}
 	}
 
-	sameVolume, err := SameVolume(o.Source, parent)
+	sameVolume, err := sameVolumeCheck(o.Source, parent)
 	if err != nil {
 		o.Warn("could not determine whether the move is on one volume (%v); using the copy path", err)
 		sameVolume = false
@@ -231,7 +242,13 @@ func MoveTarget(o MoveOptions) (entry manifest.Entry, err error) {
 
 	// Steps 6-7: swap the original aside and link it. On the same volume the
 	// verified rename above already moved the original, so there is nothing
-	// to swap aside.
+	// to swap aside. The check is point-in-time: an app that starts after it
+	// can still race the rename or unlink below.
+	if o.Recheck != nil {
+		if err := o.Recheck(); err != nil {
+			return entry, fmt.Errorf("app started running during the move: %w", err)
+		}
+	}
 	j.State = StateSwapping
 	o.Stage(StateSwapping, "swapping original aside")
 	if err := SaveJournal(o.Vault, j); err != nil {
@@ -300,6 +317,15 @@ func MoveTarget(o MoveOptions) (entry manifest.Entry, err error) {
 	j.State = StateCleanup
 	_ = SaveJournal(o.Vault, j)
 	if PathExists(bak) {
+		// Last point-in-time check before the untouched original goes away.
+		// If an app started since the swap, keeping .midas-bak would leave
+		// its writes in a path nothing reads, so abort into the rollback
+		// that restores it instead.
+		if o.Recheck != nil {
+			if err := o.Recheck(); err != nil {
+				return entry, fmt.Errorf("app started running before the untouched original could be removed: %w", err)
+			}
+		}
 		if err := RemoveOwnedPath(filepath.Dir(bak), bak, operationID, "move-original"); err != nil {
 			o.Warn("could not remove %s (%v); it is safe to delete by hand or with `midas doctor`", bak, err)
 		}

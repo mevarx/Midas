@@ -36,6 +36,10 @@ before publication.
   partial trees can be removed.
 - Add a regression test proving `directChild` rejects nested paths on every
   platform (Windows `filepath.Rel` returns backslashes).
+- Re-run the app-running check immediately before swapping the original
+  aside and immediately before deleting `.midas-bak`; a detection aborts into
+  the existing rollback path. `docs/SAFETY.md` documents the residual
+  point-in-time race window.
 - Serialize mutating commands with an advisory vault lock
   (`<vault>/.midas/LOCK`, flock on Unix and LockFileEx on Windows) and create
   new operation journals with O_EXCL, so concurrent Midas processes fail

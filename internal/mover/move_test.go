@@ -423,3 +423,127 @@ func TestCreateJournalRefusesToOverwrite(t *testing.T) {
 		t.Fatalf("updated journal = %+v, %v; want state %s", updated, err, StateVerifying)
 	}
 }
+
+// forceCopyPath makes MoveTarget take the cross-volume copy path, which is
+// the only path that stages a .midas-bak for step 11 to delete.
+func forceCopyPath(t *testing.T) {
+	t.Helper()
+	orig := sameVolumeCheck
+	sameVolumeCheck = func(string, string) (bool, error) { return false, nil }
+	t.Cleanup(func() { sameVolumeCheck = orig })
+}
+
+func TestMoveAbortsWhenAppStartsBeforeBakRemoval(t *testing.T) {
+	forceCopyPath(t)
+	root := t.TempDir()
+	source := filepath.Join(root, "home", "data")
+	vault := filepath.Join(root, "vault")
+	dest := filepath.Join(vault, "apps", "example", "data")
+	writeSourceFixture(t, source)
+	sourceBytes, sourceFiles, err := Measure(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := newVerifiedBackupSet(t, source, backup.ModeFull, apps.BackupRule{})
+	bak := source + ".midas-bak"
+
+	// First call runs before the original is swapped aside, so .midas-bak
+	// must not exist yet. The second call runs before step 11 removes it and
+	// reports the app as running.
+	calls := 0
+	_, err = MoveTarget(MoveOptions{
+		App: "example", Target: apps.Target{Name: "data"},
+		Source: source, Dest: dest, Vault: vault, Verify: "size",
+		SourceBytes: sourceBytes, SourceFiles: sourceFiles,
+		BackupSet: set, Manifest: manifest.Empty(),
+		Recheck: func() error {
+			calls++
+			switch calls {
+			case 1:
+				if PathExists(bak) {
+					t.Errorf("first Recheck ran after .midas-bak was created")
+				}
+				return nil
+			case 2:
+				if !PathExists(bak) {
+					t.Errorf("second Recheck ran without the .midas-bak it guards")
+				}
+				return errors.New("profile is in use")
+			default:
+				t.Errorf("Recheck called %d times, want exactly 2", calls)
+				return nil
+			}
+		},
+	})
+	if err == nil {
+		t.Fatal("move succeeded although the app started running")
+	}
+	if !strings.Contains(err.Error(), "app started running") {
+		t.Fatalf("error = %v, want it to mention the app running", err)
+	}
+	if calls != 2 {
+		t.Fatalf("Recheck calls = %d, want 2 (before the swap and before .midas-bak removal)", calls)
+	}
+	// The automatic rollback must have restored the untouched original and
+	// removed the staging copy. The vault copy is intentionally kept.
+	assertRealDirectory(t, source, "original after rollback")
+	if got, rerr := os.ReadFile(filepath.Join(source, "state")); rerr != nil || string(got) != "value" {
+		t.Fatalf("original state file after rollback = %q, %v; want %q", got, rerr, "value")
+	}
+	if got, rerr := os.ReadFile(filepath.Join(source, "nested", "extra")); rerr != nil || string(got) != "more" {
+		t.Fatalf("original nested file after rollback = %q, %v; want %q", got, rerr, "more")
+	}
+	if PathExists(bak) {
+		t.Fatalf(".midas-bak %q still exists after rollback", bak)
+	}
+	if _, isLink, lerr := platform.Current().ReadLink(source); lerr != nil || isLink {
+		t.Fatalf("original path after rollback = link? %t, %v; want a real directory", isLink, lerr)
+	}
+	assertNoJournal(t, vault, "example", "data")
+}
+
+func TestMoveRecheckRunsTwiceOnForcedCopyPath(t *testing.T) {
+	forceCopyPath(t)
+	root := t.TempDir()
+	source := filepath.Join(root, "home", "data")
+	vault := filepath.Join(root, "vault")
+	dest := filepath.Join(vault, "apps", "example", "data")
+	writeSourceFixture(t, source)
+	sourceBytes, sourceFiles, err := Measure(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := newVerifiedBackupSet(t, source, backup.ModeFull, apps.BackupRule{})
+	m := manifest.Empty()
+	calls := 0
+	_, err = MoveTarget(MoveOptions{
+		App: "example", Target: apps.Target{Name: "data"},
+		Source: source, Dest: dest, Vault: vault, Verify: "size",
+		SourceBytes: sourceBytes, SourceFiles: sourceFiles,
+		BackupSet: set, Manifest: m,
+		Recheck: func() error {
+			calls++
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The forced cross-volume path swaps the original into .midas-bak before
+	// step 11, so it must recheck once before the swap and once before the
+	// deletion: two successful calls. A same-volume move would see one call,
+	// because no .midas-bak is ever created.
+	if calls != 2 {
+		t.Fatalf("Recheck calls = %d, want 2 on the forced copy path", calls)
+	}
+	if ok, detail := HealthCheck(source, dest); !ok {
+		t.Fatalf("forced copy move left an unhealthy link: %s", detail)
+	}
+	if got, rerr := os.ReadFile(filepath.Join(source, "state")); rerr != nil || string(got) != "value" {
+		t.Fatalf("data is not reachable through the link: %q, %v", got, rerr)
+	}
+	if PathExists(source + ".midas-bak") {
+		t.Fatal("forced copy move left a .midas-bak behind")
+	}
+	assertNoJournal(t, vault, "example", "data")
+}

@@ -348,6 +348,7 @@ func (c *Ctx) cmdMove(args []string) error {
 			VerifyProgress:    verifyReporter,
 			Stage:             func(stage, detail string) { c.UI.Verbosef("%s: %s", it.target.Name, detail) },
 			Warn:              func(f string, a ...any) { c.UI.Warnf(f, a...) },
+			Recheck:           func() error { return c.refuserunning(def, *force) },
 		})
 		if merr != nil {
 			if progress != nil {
@@ -359,6 +360,12 @@ func (c *Ctx) cmdMove(args []string) error {
 			c.Logf("move failed app=%s target=%s: %v", appID, it.target.Name, merr)
 			if errorsIsVerify(merr) {
 				return failf(ExitVerifyFailed, "%v", merr)
+			}
+			// A mid-move re-check surfaces the wired c.refuserunning
+			// codedError through MoveTarget's %w wrapping; keep its exit code.
+			var coded *codedError
+			if errors.As(merr, &coded) {
+				return failf(coded.code, "%v", merr)
 			}
 			return failf(ExitGeneral, "%v", merr)
 		}
