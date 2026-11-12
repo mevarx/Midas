@@ -24,7 +24,7 @@ before publication.
 - Repair the published v1.0.0 release: the six platform archives and
   checksums.txt are attached and their public download links verified.
 
-## Unreleased
+## 1.1.0
 
 - Rename the Go module to `github.com/mevarx/Midas` so
   `go install github.com/mevarx/Midas/cmd/midas@latest` resolves; the previous
