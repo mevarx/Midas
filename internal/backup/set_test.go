@@ -77,3 +77,63 @@ func TestLoadSetRejectsUnknownMetadataFields(t *testing.T) {
 		t.Fatal("unknown backup metadata field was silently discarded")
 	}
 }
+
+func TestLoadLegacyBackupWithoutDirs(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "app", "set")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// A set written before the additive dirs list existed: no "dirs" field.
+	data := []byte(`{
+  "schema": 1,
+  "id": "set",
+  "app": "app",
+  "target": "target",
+  "original_path": "/home/example",
+  "mode": "full",
+  "state": "verified",
+  "created_at": "2024-01-01T00:00:00Z",
+  "files": [
+    {"path": "state", "size": 5, "mtime": "2024-01-01T00:00:00Z", "mode": 384}
+  ],
+  "skipped": [],
+  "restore_point": {}
+}`)
+	if err := os.WriteFile(filepath.Join(dir, "BACKUP.json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	set, err := LoadSet(dir)
+	if err != nil {
+		t.Fatalf("legacy BACKUP.json without dirs did not load: %v", err)
+	}
+	if len(set.Dirs) != 0 {
+		t.Fatalf("legacy set gained directory records: %+v", set.Dirs)
+	}
+	if len(set.Files) != 1 || set.Files[0].Path != "state" {
+		t.Fatalf("legacy set files = %+v", set.Files)
+	}
+}
+
+func TestValidateDirectoryRecords(t *testing.T) {
+	base := func(dirs []Dir, files []File) *Set {
+		return &Set{
+			Schema: SchemaVersion, ID: "set-1", App: "app", Target: "config",
+			Dir: filepath.Join(t.TempDir(), "app", "set-1"), Files: files, Dirs: dirs,
+		}
+	}
+	if err := base([]Dir{{Path: "."}}, nil).Validate(); err != nil {
+		t.Fatalf("root directory record was rejected: %v", err)
+	}
+	if err := base([]Dir{{Path: ".", Mode: 0o700}, {Path: ".", Mode: 0o700}}, nil).Validate(); err == nil {
+		t.Fatal("duplicate root directory record was accepted")
+	}
+	if err := base([]Dir{{Path: "../escape"}}, nil).Validate(); err == nil {
+		t.Fatal("directory traversal was accepted")
+	}
+	if err := base([]Dir{{Path: "Dir"}, {Path: "dir"}}, nil).Validate(); err == nil {
+		t.Fatal("case-folded duplicate directories were accepted")
+	}
+	if err := base([]Dir{{Path: "state"}}, []File{{Path: "state", Size: 1}}).Validate(); err == nil {
+		t.Fatal("directory duplicating a file path was accepted")
+	}
+}

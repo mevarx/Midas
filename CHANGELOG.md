@@ -38,6 +38,10 @@ before publication.
   platform (Windows `filepath.Rel` returns backslashes).
 - On Windows, query reparse points only for irregular entries, avoiding two
   filesystem calls for every regular file and directory during tree walks.
+- Record directory paths, modes, and timestamps in BACKUP.json (additive
+  `dirs` within schema 1, including empty directories) and restore them
+  bottom-up. Older sets still restore and report that directory metadata was
+  not recorded.
 - Re-run the app-running check immediately before swapping the original
   aside and immediately before deleting `.midas-bak`; a detection aborts into
   the existing rollback path. `docs/SAFETY.md` documents the residual

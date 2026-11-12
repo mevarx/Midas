@@ -28,6 +28,13 @@ JSON objects carry `schema_version`. Additive fields are compatible within a
 version; incompatible field removal/renaming or changed meaning requires a
 version increment and a documented migration path.
 
+BACKUP.json schema 1 has an optional additive `dirs` list recording directory
+paths, permission bits, and modification times, including empty directories.
+Sets written before the field existed remain readable: they restore their files
+normally, directory modes and timestamps are not restored, and the rollback
+report states that they were not recorded. Because the field is additive, no
+schema bump is required and older sets keep loading unchanged.
+
 Before changing a persistent schema, preserve a recoverable copy, implement an
 explicit migration, and test upgrade from the prior supported release. Do not
 silently discard fields that may be relevant to recovery. Downgrades are not

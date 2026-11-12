@@ -51,6 +51,13 @@ type File struct {
 	Link   string    `json:"link,omitempty"` // symlink target; hash is empty
 }
 
+// Dir is one directory recorded in a backup set. Path "." is the tree root.
+type Dir struct {
+	Path  string    `json:"path"`
+	Mode  uint32    `json:"mode"`
+	MTime time.Time `json:"mtime"`
+}
+
 // Skipped is one file intentionally not backed up.
 type Skipped struct {
 	Path   string `json:"path"`
@@ -70,6 +77,7 @@ type Set struct {
 	State        string                `json:"state"`
 	CreatedAt    time.Time             `json:"created_at"`
 	Files        []File                `json:"files"`
+	Dirs         []Dir                 `json:"dirs,omitempty"`
 	Skipped      []Skipped             `json:"skipped"`
 	RestorePoint manifest.RestorePoint `json:"restore_point"`
 
@@ -214,6 +222,22 @@ func (s *Set) Validate() error {
 		}
 		seen[f.Path] = true
 		seenFolded[folded] = true
+	}
+	seenDirs := make(map[string]bool, len(s.Dirs))
+	seenDirsFolded := make(map[string]bool, len(s.Dirs))
+	for _, d := range s.Dirs {
+		if d.Path != "." && !validBackupRelativePath(d.Path) {
+			return fmt.Errorf("invalid backup directory path %q", d.Path)
+		}
+		folded := strings.ToLower(d.Path)
+		if seenDirs[d.Path] || seenDirsFolded[folded] {
+			return fmt.Errorf("duplicate backup directory path %q", d.Path)
+		}
+		if seenFolded[folded] {
+			return fmt.Errorf("backup directory path %q duplicates a file path", d.Path)
+		}
+		seenDirs[d.Path] = true
+		seenDirsFolded[folded] = true
 	}
 	for _, f := range s.Skipped {
 		if !validBackupRelativePath(f.Path) || f.Size < 0 {

@@ -184,8 +184,22 @@ func (m *Manager) fill(s *Set, opts CreateOptions) error {
 			return fmt.Errorf("read %q: %w", p, err)
 		}
 		rel, rerr := filepath.Rel(src, p)
-		if rerr != nil || rel == "." {
+		if rerr != nil {
 			return rerr
+		}
+		if rel == "." {
+			if !d.IsDir() {
+				return nil
+			}
+			fi, ierr := d.Info()
+			if ierr != nil {
+				return fmt.Errorf("stat %q: %w", p, ierr)
+			}
+			s.Dirs = append(s.Dirs, Dir{Path: ".", Mode: uint32(fi.Mode().Perm()), MTime: fi.ModTime().UTC()})
+			if err := os.MkdirAll(s.FilesDir(), 0o700); err != nil {
+				return err
+			}
+			return nil
 		}
 		// BACKUP.json stores slash-separated paths on every platform so
 		// metadata stays portable and passes path validation.
@@ -213,6 +227,16 @@ func (m *Manager) fill(s *Set, opts CreateOptions) error {
 		}
 
 		if d.IsDir() {
+			fi, ierr := d.Info()
+			if ierr != nil {
+				return fmt.Errorf("stat %q: %w", p, ierr)
+			}
+			s.Dirs = append(s.Dirs, Dir{Path: rel, Mode: uint32(fi.Mode().Perm()), MTime: fi.ModTime().UTC()})
+			// Create the directory in the set so empty directories are part of
+			// it and a restore recreates them.
+			if err := os.MkdirAll(filepath.Join(s.FilesDir(), rel), 0o700); err != nil {
+				return err
+			}
 			return nil
 		}
 		fi, ierr := d.Info()

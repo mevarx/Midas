@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -220,6 +221,9 @@ func Rollback(o RollbackOptions) (rep *RollbackReport, returnErr error) {
 		if err := restoreFromSet(o.BackupSet, o.Source, o.Progress, o.Context, o.Workers, operationID); err != nil {
 			return rep, err
 		}
+		if len(o.BackupSet.Dirs) == 0 {
+			rep.Notes = append(rep.Notes, "the backup set predates directory metadata; directory modes and timestamps were not recorded and may differ")
+		}
 		if problems := verifyRestored(o.Source, o.BackupSet); len(problems) > 0 {
 			return rep, fmt.Errorf("restored files failed verification:\n  %s", strings.Join(problems, "\n  "))
 		}
@@ -250,6 +254,9 @@ func Rollback(o RollbackOptions) (rep *RollbackReport, returnErr error) {
 		}
 		if err := restoreFromSet(o.BackupSet, o.Source, o.Progress, o.Context, o.Workers, operationID); err != nil {
 			return rep, err
+		}
+		if len(o.BackupSet.Dirs) == 0 {
+			rep.Notes = append(rep.Notes, "the backup set predates directory metadata; directory modes and timestamps were not recorded and may differ")
 		}
 		if problems := verifyRestored(o.Source, o.BackupSet); len(problems) > 0 {
 			return rep, fmt.Errorf("restored files failed verification:\n  %s", strings.Join(problems, "\n  "))
@@ -366,6 +373,27 @@ func restoreFromSet(s *backup.Set, source string, progress Reporter, ctx context
 		}
 		if err := os.Chmod(filepath.Join(source, f.Path), os.FileMode(f.Mode)); err != nil {
 			return fmt.Errorf("restore file mode for %q: %w", f.Path, err)
+		}
+	}
+	if len(s.Dirs) > 0 {
+		dirs := make([]backup.Dir, len(s.Dirs))
+		copy(dirs, s.Dirs)
+		// Bottom-up (reverse lexical order): children before parents and the
+		// root last, so a read-only child directory cannot block changes.
+		sort.Slice(dirs, func(i, j int) bool { return dirs[i].Path > dirs[j].Path })
+		for _, d := range dirs {
+			p := source
+			if d.Path != "." {
+				p = filepath.Join(source, d.Path)
+			}
+			if err := os.Chmod(p, os.FileMode(d.Mode)); err != nil {
+				return fmt.Errorf("restore directory mode for %q: %w", d.Path, err)
+			}
+			if !d.MTime.IsZero() {
+				if err := os.Chtimes(p, d.MTime, d.MTime); err != nil {
+					return fmt.Errorf("restore directory timestamp for %q: %w", d.Path, err)
+				}
+			}
 		}
 	}
 	return nil

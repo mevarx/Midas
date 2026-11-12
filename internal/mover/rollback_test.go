@@ -4,8 +4,10 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mevarx/Midas/internal/apps"
 	"github.com/mevarx/Midas/internal/backup"
@@ -345,5 +347,187 @@ func TestCanceledRollbackKeepsJournalAndCanRetry(t *testing.T) {
 	}
 	if JournalExists(vault, "example", "data") {
 		t.Fatal("successful retry left a journal")
+	}
+}
+
+// TestRollbackRestoresDirectoryModesAndTimes covers the full round trip for
+// directory metadata: recorded modes and mtimes (including the tree root and an
+// empty directory that only exists as a directory) are restored.
+func TestRollbackRestoresDirectoryModesAndTimes(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "home", "data")
+	vault := filepath.Join(root, "vault")
+	dest := filepath.Join(vault, "apps", "example", "data")
+	t.Cleanup(func() { unlockProtectedTree(source) })
+
+	open := filepath.Join(source, "open")
+	locked := filepath.Join(source, "locked")
+	empty := filepath.Join(source, "empty")
+	for _, dir := range []string{open, locked, empty} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(open, "a"), []byte("a-data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(locked, "b"), []byte("b-data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	want := []struct {
+		rel  string
+		mode os.FileMode
+	}{
+		{".", 0o750},
+		{"open", 0o755},
+		{"locked", 0o555},
+		{"empty", 0o700},
+	}
+	past := time.Now().Add(-2 * time.Second)
+	for _, w := range want {
+		p := source
+		if w.rel != "." {
+			p = filepath.Join(source, filepath.FromSlash(w.rel))
+		}
+		if err := os.Chmod(p, w.mode); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(p, past, past); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sourceTimes := make(map[string]time.Time, len(want))
+	sourceModes := make(map[string]os.FileMode, len(want))
+	for _, w := range want {
+		p := source
+		if w.rel != "." {
+			p = filepath.Join(source, filepath.FromSlash(w.rel))
+		}
+		fi, err := os.Stat(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sourceTimes[w.rel] = fi.ModTime()
+		sourceModes[w.rel] = fi.Mode().Perm()
+		// Windows reports only a read-only bit, so exact POSIX modes are only
+		// meaningful elsewhere; the restore must match what was recorded.
+		if runtime.GOOS != "windows" && fi.Mode().Perm() != w.mode {
+			t.Fatalf("source directory %q mode = %v, want %v", w.rel, fi.Mode().Perm(), w.mode)
+		}
+	}
+
+	set := newVerifiedBackupSet(t, source, backup.ModeFull, apps.BackupRule{})
+	if len(set.Dirs) != len(want) {
+		t.Fatalf("backup set recorded %d directories, want %d: %+v", len(set.Dirs), len(want), set.Dirs)
+	}
+
+	// Total loss of the live tree; the 0555 directory must be unlocked first so
+	// its contents can be removed.
+	if err := os.Chmod(locked, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(source); err != nil {
+		t.Fatal(err)
+	}
+
+	rep, err := Rollback(RollbackOptions{
+		App: "example", Target: "data", Source: source, Dest: dest, Vault: vault,
+		BackupSet: set, Manifest: manifest.Empty(), Prefer: "backup",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rep.Restored {
+		t.Fatalf("rollback report = %+v, want a restore", rep)
+	}
+	for _, note := range rep.Notes {
+		if strings.Contains(note, "predates directory metadata") {
+			t.Fatalf("modern backup set produced the legacy metadata note: %v", rep.Notes)
+		}
+	}
+	for _, w := range want {
+		p := source
+		if w.rel != "." {
+			p = filepath.Join(source, filepath.FromSlash(w.rel))
+		}
+		fi, err := os.Lstat(p)
+		if err != nil {
+			t.Fatalf("directory %q was not restored: %v", w.rel, err)
+		}
+		if !fi.IsDir() || fi.Mode()&os.ModeSymlink != 0 {
+			t.Fatalf("%q is not a real directory: %v", w.rel, fi.Mode())
+		}
+		if fi.Mode().Perm() != sourceModes[w.rel] {
+			t.Fatalf("directory %q mode = %v, want recorded %v", w.rel, fi.Mode().Perm(), sourceModes[w.rel])
+		}
+	}
+	// Directory mtimes are compared with the recorded source times: copying
+	// may add sub-second rounding, so allow a 2s window.
+	for _, d := range set.Dirs {
+		p := source
+		if d.Path != "." {
+			p = filepath.Join(source, filepath.FromSlash(d.Path))
+		}
+		fi, err := os.Stat(p)
+		if err != nil {
+			t.Fatalf("stat restored directory %q: %v", d.Path, err)
+		}
+		wantTime, ok := sourceTimes[d.Path]
+		if !ok {
+			t.Fatalf("unexpected recorded directory %q", d.Path)
+		}
+		if diff := fi.ModTime().Sub(wantTime); diff > 2*time.Second || diff < -2*time.Second {
+			t.Fatalf("directory %q mtime = %v, want within 2s of %v", d.Path, fi.ModTime(), wantTime)
+		}
+		if diff := fi.ModTime().Sub(d.MTime); diff > 2*time.Second || diff < -2*time.Second {
+			t.Fatalf("directory %q mtime = %v, want within 2s of recorded %v", d.Path, fi.ModTime(), d.MTime)
+		}
+	}
+	if got, err := os.ReadFile(filepath.Join(source, "open", "a")); err != nil || string(got) != "a-data" {
+		t.Fatalf("restored file in a 0755 directory: %q, %v", got, err)
+	}
+	if got, err := os.ReadFile(filepath.Join(source, "locked", "b")); err != nil || string(got) != "b-data" {
+		t.Fatalf("restored file in a 0555 directory: %q, %v", got, err)
+	}
+}
+
+// TestRollbackLegacyBackupNotesMissingDirectoryMetadata covers sets saved
+// without the additive dirs list: they still restore and the report says that
+// directory modes and timestamps were not recorded.
+func TestRollbackLegacyBackupNotesMissingDirectoryMetadata(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "home", "data")
+	vault := filepath.Join(root, "vault")
+	dest := filepath.Join(vault, "apps", "example", "data")
+	writeSourceFixture(t, source)
+	set := newVerifiedBackupSet(t, source, backup.ModeFull, apps.BackupRule{})
+	set.Dirs = nil
+	if err := set.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(source); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := Rollback(RollbackOptions{
+		App: "example", Target: "data", Source: source, Dest: dest, Vault: vault,
+		BackupSet: set, Manifest: manifest.Empty(), Prefer: "backup",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rep.Restored {
+		t.Fatalf("rollback report = %+v, want a restore", rep)
+	}
+	noted := false
+	for _, note := range rep.Notes {
+		if strings.Contains(note, "predates directory metadata") {
+			noted = true
+		}
+	}
+	if !noted {
+		t.Fatalf("legacy backup restore did not note missing directory metadata: %v", rep.Notes)
+	}
+	if got, err := os.ReadFile(filepath.Join(source, "nested", "extra")); err != nil || string(got) != "more" {
+		t.Fatalf("legacy backup did not restore files: %q, %v", got, err)
 	}
 }

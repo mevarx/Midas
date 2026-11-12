@@ -94,6 +94,20 @@ gate(
     "prior-version metadata compatibility tested: TestLoadLegacyConfigDefaultsSchemaVersion",
 )
 
+# Prior-version BACKUP.json compatibility: a set without the additive dirs list
+# must still load, and that path is covered by an exact test name.
+backup_legacy_test = repo("internal/backup/set_test.go")
+backup_legacy_ok = backup_legacy_test.is_file() and re.search(
+    r"^func TestLoadLegacyBackupWithoutDirs\(",
+    backup_legacy_test.read_text(encoding="utf-8"),
+    re.M,
+) is not None
+gate(
+    backup_legacy_ok,
+    "missing prior-version backup metadata compatibility test: TestLoadLegacyBackupWithoutDirs",
+    "prior-version backup metadata compatibility tested: TestLoadLegacyBackupWithoutDirs",
+)
+
 # Policy, safety, and recovery documentation.
 required_docs = (
     "COMPATIBILITY.md",
