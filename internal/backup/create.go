@@ -160,6 +160,20 @@ func (m *Manager) Create(opts CreateOptions, rp manifest.RestorePoint) (*Set, er
 	return s, nil
 }
 
+// checkCaseCollision records rel (already slash-separated) in seen and reports
+// a collision when a different source path folds to the same case-insensitive
+// key. Every entry registers — directories, links and regular files — because
+// the backup set's on-disk layout can collide whichever kind produced the name.
+// Excluded entries register too: their directories still exist in the set.
+func checkCaseCollision(seen map[string]string, rel string) error {
+	key := strings.ToLower(rel)
+	if other, ok := seen[key]; ok && other != rel {
+		return fmt.Errorf("case collision: %q and %q differ only by case", other, rel)
+	}
+	seen[key] = rel
+	return nil
+}
+
 func (m *Manager) fill(s *Set, opts CreateOptions) error {
 	src := opts.OriginalPath
 	sel := newSelector(opts.Mode, opts.Rule)
@@ -176,6 +190,11 @@ func (m *Manager) fill(s *Set, opts CreateOptions) error {
 		// BACKUP.json stores slash-separated paths on every platform so
 		// metadata stays portable and passes path validation.
 		rel = filepath.ToSlash(rel)
+		// Register before link/dir/selector handling: a directory or a link
+		// that differs only by case would otherwise merge on disk.
+		if cerr := checkCaseCollision(seen, rel); cerr != nil {
+			return cerr
+		}
 
 		// Links are recreated, never followed. Junctions on Windows are not
 		// reported as ModeSymlink by Lstat, so ask the platform layer.
@@ -211,12 +230,6 @@ func (m *Manager) fill(s *Set, opts CreateOptions) error {
 			}
 			return nil
 		}
-		lower := strings.ToLower(rel)
-		if other, ok := seen[lower]; ok && other != rel {
-			return fmt.Errorf("case collision: %q and %q differ only by case", other, rel)
-		}
-		seen[lower] = rel
-
 		f, n, cerr := copyFile(p, filepath.Join(s.FilesDir(), rel), fi)
 		if cerr != nil {
 			return cerr

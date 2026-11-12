@@ -121,6 +121,11 @@ func CopyTree(src, dst string, opts CopyOptions) (Stats, error) {
 			return rerr
 		}
 		target := filepath.Join(dst, rel)
+		// Register before any type handling so a name that differs only by
+		// case can never silently merge into the tree being built.
+		if cerr := checkCaseCollision(seen, rel); cerr != nil {
+			return cerr
+		}
 
 		lt, isLink, lerr := platform.Current().ReadLink(p)
 		if lerr != nil {
@@ -155,12 +160,6 @@ func CopyTree(src, dst string, opts CopyOptions) (Stats, error) {
 		if !info.Mode().IsRegular() {
 			return fmt.Errorf("cannot copy special file %q", p)
 		}
-		lower := strings.ToLower(filepath.ToSlash(rel))
-		if other, ok := seen[lower]; ok && other != filepath.ToSlash(rel) {
-			return fmt.Errorf("case collision between %q and %q; aborting before any data is touched", other, filepath.ToSlash(rel))
-		}
-		seen[lower] = filepath.ToSlash(rel)
-
 		perm := info.Mode().Perm()
 		if opts.StageWritable {
 			perm = 0o600
@@ -195,6 +194,21 @@ func CopyTree(src, dst string, opts CopyOptions) (Stats, error) {
 		return st, terr
 	}
 	return st, nil
+}
+
+// checkCaseCollision records rel in seen and reports a collision when a
+// different source path already folded to the same case-insensitive key.
+// Every entry type is registered (directories, links, regular files) because
+// each creates a destination name. Repeating the exact same path is allowed:
+// rebuilds revisit identical entries.
+func checkCaseCollision(seen map[string]string, rel string) error {
+	slash := filepath.ToSlash(rel)
+	key := strings.ToLower(slash)
+	if other, ok := seen[key]; ok && other != slash {
+		return fmt.Errorf("case collision between %q and %q; original untouched; partial preserved", other, slash)
+	}
+	seen[key] = slash
+	return nil
 }
 
 // dirTime is a destination directory whose source mtime must be restored once

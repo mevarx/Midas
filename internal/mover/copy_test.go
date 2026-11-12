@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -87,5 +88,67 @@ func TestCopyTreePreservesDirectoryTimestamps(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestCheckCaseCollisionDirectoryVsDirectory proves that two directories whose
+// names differ only by case are rejected. The collision map receives only the
+// paths; the filesystem is never asked to hold both names, so this runs on
+// every platform.
+func TestCheckCaseCollisionDirectoryVsDirectory(t *testing.T) {
+	seen := make(map[string]string)
+	if err := checkCaseCollision(seen, "Foo"); err != nil {
+		t.Fatalf("first registration failed: %v", err)
+	}
+	err := checkCaseCollision(seen, "foo")
+	if err == nil {
+		t.Fatal("directory-vs-directory case collision was not detected")
+	}
+	for _, want := range []string{`"Foo"`, `"foo"`, "original untouched; partial preserved"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("collision error %q does not contain %q", err, want)
+		}
+	}
+	// A rebuild revisits identical paths; that must stay allowed.
+	if err := checkCaseCollision(seen, "Foo"); err != nil {
+		t.Fatalf("repeated identical path was rejected: %v", err)
+	}
+}
+
+// TestCheckCaseCollisionLinkVsFile covers a link and a regular file that fold
+// to the same key, which the old file-only check could not see for the link.
+func TestCheckCaseCollisionLinkVsFile(t *testing.T) {
+	seen := make(map[string]string)
+	if err := checkCaseCollision(seen, "Link"); err != nil {
+		t.Fatalf("first registration failed: %v", err)
+	}
+	err := checkCaseCollision(seen, "link")
+	if err == nil {
+		t.Fatal("link-vs-file case collision was not detected")
+	}
+	for _, want := range []string{`"Link"`, `"link"`, "original untouched; partial preserved"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("collision error %q does not contain %q", err, want)
+		}
+	}
+}
+
+// TestCheckCaseCollisionNestedPaths checks the comparison happens per full
+// relative path, not per base name.
+func TestCheckCaseCollisionNestedPaths(t *testing.T) {
+	seen := make(map[string]string)
+	if err := checkCaseCollision(seen, filepath.Join("dir", "Foo")); err != nil {
+		t.Fatalf("first registration failed: %v", err)
+	}
+	err := checkCaseCollision(seen, filepath.Join("dir", "foo"))
+	if err == nil {
+		t.Fatal("nested case collision was not detected")
+	}
+	if !strings.Contains(err.Error(), "dir/Foo") || !strings.Contains(err.Error(), "dir/foo") {
+		t.Fatalf("collision error does not use slash-separated paths: %q", err)
+	}
+	// Same base name in a different directory is not a collision.
+	if err := checkCaseCollision(seen, filepath.Join("other", "foo")); err != nil {
+		t.Fatalf("distinct parent directory was rejected: %v", err)
 	}
 }

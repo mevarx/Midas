@@ -44,6 +44,10 @@ before publication.
 - Preserve directory modification times on copies by applying them bottom-up
   after all children are written; the previous early timestamp call was
   always overwritten by child writes.
+- Detect case collisions for directories and links as well as regular files,
+  so trees that would silently merge on case-insensitive filesystems abort
+  before commit. The copy error now states that the original is untouched and
+  any partial copy is preserved.
 - Verify each backup source file did not change during its copy (same file,
   size, modification time, and byte count). A torn backup set is discarded
   instead of being marked verified.
