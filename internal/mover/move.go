@@ -50,6 +50,11 @@ type MoveOptions struct {
 // production never assigns it.
 var sameVolumeCheck = SameVolume
 
+// forgetOwnership is the ownership-cleanup seam used for post-commit marker
+// removal. Tests substitute it to simulate a metadata failure after the
+// verified data is already committed; production never assigns it.
+var forgetOwnership = ForgetOwnership
+
 // MoveTarget runs the journaled move state machine for one target. On any
 // failure after the safety net it performs an automatic rollback before
 // returning.
@@ -226,8 +231,11 @@ func MoveTarget(o MoveOptions) (entry manifest.Entry, err error) {
 		if err := os.Rename(partial, o.Dest); err != nil {
 			return entry, fmt.Errorf("rename partial copy into place: %w", err)
 		}
-		if err := ForgetOwnership(filepath.Dir(partial), partial, operationID, "move-partial"); err != nil {
-			return entry, fmt.Errorf("verified destination committed but ownership metadata could not be cleared: %w", err)
+		// The verified data is already committed at o.Dest; a metadata
+		// cleanup failure must never roll that back. The marker is stale and
+		// doctor can reconcile it.
+		if err := forgetOwnership(filepath.Dir(partial), partial, operationID, "move-partial"); err != nil {
+			o.Warn("the verified destination was committed, but ownership metadata at %s could not be cleared (%v); the data is safe and `midas doctor` can reconcile the stale marker", ownerPath(partial), err)
 		}
 	}
 	if !sameVolume {

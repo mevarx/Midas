@@ -263,7 +263,21 @@ func (c *Ctx) cmdDoctor(args []string) error {
 						add("partial.orphaned", "error", def.ID, t.Name, partial, "partial directory has no matching journal and was preserved", "inspect its contents and ownership metadata manually; doctor will not delete it")
 					}
 					if !mover.PathExists(partial) && mover.PathExists(partial+".midas-owner.json") && journalByTarget[key] == nil {
-						add("operation.artifact_orphaned", "warning", def.ID, t.Name, partial+".midas-owner.json", "ownership metadata exists without its operation directory or journal", "preserve the metadata for diagnosis")
+						marker := partial + ".midas-owner.json"
+						if *repair && !c.G.DryRun {
+							c.UI.Infof("repair plan: remove stale ownership metadata %s (no data path is touched)", marker)
+							// Revalidate immediately before removing anything:
+							// the partial path and its journal must still be absent.
+							if mover.PathExists(partial) || mover.PathExists(mover.JournalPath(vault, def.ID, t.Name)) {
+								add("operation.marker_stale", "warning", def.ID, t.Name, marker, "ownership metadata changed while doctor was running; no cleanup was attempted", "rerun `midas doctor` after the in-flight operation finishes")
+							} else if rerr := os.Remove(marker); rerr != nil {
+								add("operation.marker_cleanup_failed", "warning", def.ID, t.Name, marker, "stale ownership metadata could not be removed: "+rerr.Error(), "remove the marker by hand only after confirming the partial path and journal are absent")
+							} else {
+								add("operation.marker_cleaned", "info", def.ID, t.Name, marker, "stale ownership metadata removed after revalidation", "no action required")
+							}
+						} else {
+							add("operation.artifact_orphaned", "warning", def.ID, t.Name, marker, "ownership metadata exists without its operation directory or journal", "preserve the metadata for diagnosis")
+						}
 					} else if !mover.PathExists(partial) && mover.PathExists(partial+".midas-owner.json") {
 						add("operation.marker_stale", "warning", def.ID, t.Name, partial+".midas-owner.json", "ownership metadata remains after the partial path changed; no cleanup was attempted", "compare the marker, journal state, and committed destination before removing metadata")
 					}

@@ -2,6 +2,7 @@ package mover
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -544,6 +545,80 @@ func TestMoveRecheckRunsTwiceOnForcedCopyPath(t *testing.T) {
 	}
 	if PathExists(source + ".midas-bak") {
 		t.Fatal("forced copy move left a .midas-bak behind")
+	}
+	assertNoJournal(t, vault, "example", "data")
+}
+
+// TestMoveSucceedsWhenOwnershipCleanupFails covers the post-commit metadata
+// failure: the verified data is already committed when the ownership marker
+// cannot be cleared, so the move must finish with a warning instead of
+// rolling back committed data.
+func TestMoveSucceedsWhenOwnershipCleanupFails(t *testing.T) {
+	forceCopyPath(t)
+	root := t.TempDir()
+	source := filepath.Join(root, "home", "data")
+	vault := filepath.Join(root, "vault")
+	dest := filepath.Join(vault, "apps", "example", "data")
+	partial := dest + ".midas-partial"
+	writeSourceFixture(t, source)
+	sourceBytes, sourceFiles, err := Measure(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := newVerifiedBackupSet(t, source, backup.ModeFull, apps.BackupRule{})
+	m := manifest.Empty()
+
+	origForget := forgetOwnership
+	calls := 0
+	forgetOwnership = func(root, path, operationID, kind string) error {
+		calls++
+		if calls == 1 {
+			return errors.New("injected metadata failure")
+		}
+		return origForget(root, path, operationID, kind)
+	}
+	t.Cleanup(func() { forgetOwnership = origForget })
+
+	var warnings []string
+	_, err = MoveTarget(MoveOptions{
+		App: "example", Target: apps.Target{Name: "data"},
+		Source: source, Dest: dest, Vault: vault, Verify: "size",
+		SourceBytes: sourceBytes, SourceFiles: sourceFiles,
+		BackupSet: set, Manifest: m,
+		Warn: func(format string, a ...any) {
+			warnings = append(warnings, fmt.Sprintf(format, a...))
+		},
+	})
+	if err != nil {
+		t.Fatalf("move failed on a post-commit metadata error: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("ownership cleanup calls = %d, want 1", calls)
+	}
+	if ok, detail := HealthCheck(source, dest); !ok {
+		t.Fatalf("move left an unhealthy link: %s", detail)
+	}
+	if got, rerr := os.ReadFile(filepath.Join(source, "state")); rerr != nil || string(got) != "value" {
+		t.Fatalf("data is not reachable through the original path: %q, %v", got, rerr)
+	}
+	if idx, stored := m.Find("example", "data"); idx < 0 || stored == nil {
+		t.Fatal("manifest has no entry for the moved target")
+	} else if stored.VaultPath != dest || stored.OriginalPath != source {
+		t.Fatalf("manifest entry paths = %q -> %q, want %q -> %q", stored.OriginalPath, stored.VaultPath, source, dest)
+	}
+	if !PathExists(ownerPath(partial)) {
+		t.Fatalf("stale ownership marker %q is missing after the injected failure", ownerPath(partial))
+	}
+	warned := strings.Join(warnings, "\n")
+	if !strings.Contains(warned, "ownership metadata") || !strings.Contains(warned, "doctor") {
+		t.Fatalf("warnings = %q, want them to mention ownership metadata and doctor", warned)
+	}
+	// The committed data stayed in place: no rollback ran.
+	if !DirExists(dest) {
+		t.Fatalf("committed destination %q is missing", dest)
+	}
+	if got, rerr := os.ReadFile(filepath.Join(dest, "nested", "extra")); rerr != nil || string(got) != "more" {
+		t.Fatalf("committed destination data = %q, %v; want %q", got, rerr, "more")
 	}
 	assertNoJournal(t, vault, "example", "data")
 }

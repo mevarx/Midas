@@ -218,7 +218,9 @@ func Rollback(o RollbackOptions) (rep *RollbackReport, returnErr error) {
 		if err := clearOriginal(o.Source, isLink, rep, o.Force); err != nil {
 			return rep, err
 		}
-		if err := restoreFromSet(o.BackupSet, o.Source, o.Progress, o.Context, o.Workers, operationID); err != nil {
+		if err := restoreFromSet(o.BackupSet, o.Source, o.Progress, o.Context, o.Workers, operationID, func(format string, a ...any) {
+			rep.Notes = append(rep.Notes, fmt.Sprintf(format, a...))
+		}); err != nil {
 			return rep, err
 		}
 		if len(o.BackupSet.Dirs) == 0 {
@@ -252,7 +254,9 @@ func Rollback(o RollbackOptions) (rep *RollbackReport, returnErr error) {
 		if o.BackupSet == nil {
 			return rep, errors.New("no rollback source available")
 		}
-		if err := restoreFromSet(o.BackupSet, o.Source, o.Progress, o.Context, o.Workers, operationID); err != nil {
+		if err := restoreFromSet(o.BackupSet, o.Source, o.Progress, o.Context, o.Workers, operationID, func(format string, a ...any) {
+			rep.Notes = append(rep.Notes, fmt.Sprintf(format, a...))
+		}); err != nil {
 			return rep, err
 		}
 		if len(o.BackupSet.Dirs) == 0 {
@@ -338,14 +342,19 @@ func placeFromVault(dest, source string, rep *RollbackReport, progress Reporter,
 	if err := os.Rename(partial, source); err != nil {
 		return fmt.Errorf("commit verified rollback copy to %q: %w", source, err)
 	}
-	if err := ForgetOwnership(filepath.Dir(partial), partial, operationID, "rollback-partial"); err != nil {
-		return fmt.Errorf("rollback copy committed but ownership marker could not be cleared: %w", err)
+	// The restored tree is committed at source; a marker cleanup failure is
+	// metadata-only and must not fail the rollback.
+	if err := forgetOwnership(filepath.Dir(partial), partial, operationID, "rollback-partial"); err != nil {
+		rep.Notes = append(rep.Notes, fmt.Sprintf("the rollback copy was committed, but ownership metadata at %s could not be cleared (%v); the data is safe and `midas doctor` can reconcile the stale marker", ownerPath(partial), err))
 	}
 	rep.Notes = append(rep.Notes, "the vault copy was copied back and kept at "+dest)
 	return nil
 }
 
-func restoreFromSet(s *backup.Set, source string, progress Reporter, ctx context.Context, workers int, operationID string) error {
+func restoreFromSet(s *backup.Set, source string, progress Reporter, ctx context.Context, workers int, operationID string, warn func(format string, a ...any)) error {
+	if warn == nil {
+		warn = func(string, ...any) {}
+	}
 	if err := os.MkdirAll(filepath.Dir(source), 0o755); err != nil {
 		return err
 	}
@@ -362,8 +371,10 @@ func restoreFromSet(s *backup.Set, source string, progress Reporter, ctx context
 	if err := os.Rename(partial, source); err != nil {
 		return err
 	}
-	if err := ForgetOwnership(filepath.Dir(partial), partial, operationID, "rollback-partial"); err != nil {
-		return err
+	// The restored tree is committed at source; a marker cleanup failure is
+	// metadata-only and must not fail the rollback.
+	if err := forgetOwnership(filepath.Dir(partial), partial, operationID, "rollback-partial"); err != nil {
+		warn("the restored copy was committed, but ownership metadata at %s could not be cleared (%v); the data is safe and `midas doctor` can reconcile the stale marker", ownerPath(partial), err)
 	}
 	// The set tree is chmod'ed read-only for protection; the recorded
 	// per-file modes from BACKUP.json are the ones the original data had.
