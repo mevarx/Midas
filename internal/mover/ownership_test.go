@@ -455,3 +455,27 @@ func TestCopyRecreatesDirectoryLinkWithoutFollowingIt(t *testing.T) {
 		t.Fatalf("snapshot did not record the link: %#v", snap)
 	}
 }
+
+func TestDirectChildRejectsNestedPathOnEveryPlatform(t *testing.T) {
+	root := t.TempDir()
+	nested := filepath.Join(root, "sub", "dir")
+	if _, err := directChild(root, nested); err == nil {
+		t.Fatalf("directChild accepted nested path %q on %s; relative separators must be rejected", nested, runtime.GOOS)
+	}
+	direct := filepath.Join(root, "sub")
+	got, err := directChild(root, direct)
+	if err != nil {
+		t.Fatalf("directChild rejected direct child %q: %v", direct, err)
+	}
+	want, err := filepath.Abs(filepath.Join(root, "sub"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("directChild returned %q, want cleaned path %q", got, want)
+	}
+	outside := filepath.Join(root, "..", "elsewhere")
+	if _, err := directChild(root, outside); err == nil {
+		t.Fatalf("directChild accepted path outside root %q on %s", outside, runtime.GOOS)
+	}
+}
