@@ -173,7 +173,13 @@ func writeJournal(vault string, j *Journal, exclusive bool) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(name, path)
+	if err := os.Rename(name, path); err != nil {
+		return err
+	}
+	if err := platform.SyncDir(filepath.Dir(path)); err != nil {
+		return fmt.Errorf("make journal %q durable: %w", path, err)
+	}
+	return nil
 }
 
 // prepareJournal validates j, fills in generated metadata, and returns the

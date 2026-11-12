@@ -38,6 +38,9 @@ before publication.
   platform (Windows `filepath.Rel` returns backslashes).
 - On Windows, query reparse points only for irregular entries, avoiding two
   filesystem calls for every regular file and directory during tree walks.
+- fsync the parent directory after atomic journal, manifest, and BACKUP.json
+  renames on Unix so metadata survives a crash immediately after the write.
+  The step is a documented no-op on Windows.
 - Document known limitations: hard links are duplicated by copies, cloud-synced
   placeholder folders are unsupported/risky, and legacy backup sets lack
   directory metadata.

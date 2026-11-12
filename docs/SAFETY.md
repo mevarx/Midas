@@ -47,6 +47,21 @@ You must close the app before moving its data. `--force` skips the check
 entirely and is not a way to make a running app safe; it only suppresses the
 warning.
 
+### Metadata durability
+
+Midas writes its state files atomically: a temporary file is written, fsynced,
+and renamed into place. On Unix that rename is only atomic, not durable — the
+containing directory entry can be lost on a crash or power loss — so every
+journal, manifest and `BACKUP.json` rename is followed by an fsync of the
+parent directory. After the write call returns, the state file survives a
+crash that follows immediately.
+
+On Windows this step is a no-op. There is no directory fsync, and NTFS journals
+metadata changes itself, so renames are durable to the extent of the
+filesystem journal rather than explicitly flushed. That is a documented
+residual difference between the platforms, not a claim of identical
+guarantees.
+
 ## What Midas does not do
 
 - **Restore points are not a backup of your profile.** Windows System Restore

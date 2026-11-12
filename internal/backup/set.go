@@ -399,5 +399,11 @@ func writeAtomic(path string, data []byte, mode os.FileMode) error {
 		return err
 	}
 	_ = os.Chmod(name, mode)
-	return os.Rename(name, path)
+	if err := os.Rename(name, path); err != nil {
+		return err
+	}
+	if err := platform.SyncDir(filepath.Dir(path)); err != nil {
+		return fmt.Errorf("make %q durable: %w", path, err)
+	}
+	return nil
 }

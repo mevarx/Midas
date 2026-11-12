@@ -189,6 +189,11 @@ func (m *Manifest) Save(vault string) error {
 	if err := os.Rename(tmpName, p); err != nil {
 		return err
 	}
+	// Both renames above (old manifest to .bak, temp file to the manifest
+	// path) live in the same directory, so one flush covers them.
+	if err := platform.SyncDir(meta); err != nil {
+		return fmt.Errorf("make manifest %q durable: %w", p, err)
+	}
 	return nil
 }
 
