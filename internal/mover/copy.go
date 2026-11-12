@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/mevarx/Midas/internal/platform"
 )
@@ -54,8 +55,10 @@ type copyTask struct {
 
 const copyBufSize = 1 << 20
 
-// CopyTree copies src to dst, preserving structure, links (recreated, never
-// followed), modes and timestamps. dst must not already exist.
+// CopyTree copies src to dst, preserving structure, modes, file and directory
+// timestamps, and links (recreated, never followed). Directory timestamps are
+// applied after their children are written, so they match the source. dst must
+// not already exist.
 func CopyTree(src, dst string, opts CopyOptions) (Stats, error) {
 	var st Stats
 	ctx := opts.Context
@@ -80,6 +83,9 @@ func CopyTree(src, dst string, opts CopyOptions) (Stats, error) {
 		return st, err
 	}
 	st.Dirs++
+	// Directory timestamps are applied after the walk: writing children bumps
+	// the parent mtime, so restoring it must happen bottom-up at the end.
+	dirTimes := []dirTime{{path: dst, mtime: fi.ModTime()}}
 
 	if opts.Workers < 0 || opts.Workers > 16 {
 		return st, errors.New("copy workers must be between 1 and 16")
@@ -142,7 +148,7 @@ func CopyTree(src, dst string, opts CopyOptions) (Stats, error) {
 			if err := os.MkdirAll(target, dirMode); err != nil {
 				return err
 			}
-			_ = os.Chtimes(target, info.ModTime(), info.ModTime())
+			dirTimes = append(dirTimes, dirTime{path: target, mtime: info.ModTime()})
 			st.Dirs++
 			return nil
 		}
@@ -176,13 +182,39 @@ func CopyTree(src, dst string, opts CopyOptions) (Stats, error) {
 		}
 		return nil
 	})
-	if pool == nil {
+	if pool != nil {
+		totals, copyErr := pool.finish(err)
+		st.Files += totals.files
+		st.Bytes += totals.bytes
+		err = copyErr
+	}
+	if err != nil {
 		return st, err
 	}
-	totals, copyErr := pool.finish(err)
-	st.Files += totals.files
-	st.Bytes += totals.bytes
-	return st, copyErr
+	if terr := applyDirTimes(dirTimes); terr != nil {
+		return st, terr
+	}
+	return st, nil
+}
+
+// dirTime is a destination directory whose source mtime must be restored once
+// all of its children have been written.
+type dirTime struct {
+	path  string
+	mtime time.Time
+}
+
+// applyDirTimes restores directory mtimes bottom-up: reverse lexical order puts
+// every child before its parent and the root destination last, so a copy is not
+// observed mid-restoration and the root keeps the source mtime.
+func applyDirTimes(dirs []dirTime) error {
+	sort.Slice(dirs, func(i, j int) bool { return dirs[i].path > dirs[j].path })
+	for _, d := range dirs {
+		if err := os.Chtimes(d.path, d.mtime, d.mtime); err != nil {
+			return fmt.Errorf("set directory timestamp %q: %w", d.path, err)
+		}
+	}
+	return nil
 }
 
 // applyTreeModes restores the source tree's permission bits on a staged copy

@@ -41,6 +41,9 @@ before publication.
   new operation journals with O_EXCL, so concurrent Midas processes fail
   cleanly instead of racing on the same paths. Doctor reports a live lock
   holder.
+- Preserve directory modification times on copies by applying them bottom-up
+  after all children are written; the previous early timestamp call was
+  always overwritten by child writes.
 - Verify each backup source file did not change during its copy (same file,
   size, modification time, and byte count). A torn backup set is discarded
   instead of being marked verified.
