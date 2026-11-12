@@ -26,6 +26,10 @@ before publication.
 
 ## 1.1.0
 
+- Require Go 1.26.5 or newer for builds. That patch release contains the fix
+  for GO-2026-4602 (`os.ReadDir` FileInfo escaping a Root), which govulncheck
+  reports as reachable through link health checks. Release binaries and CI now
+  use the patched toolchain.
 - Rename the Go module to `github.com/mevarx/Midas` so
   `go install github.com/mevarx/Midas/cmd/midas@latest` resolves; the previous
   path returned 404. Imports, linker flags, and install docs are updated.
