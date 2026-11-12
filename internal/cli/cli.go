@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mevarx/Midas/internal/config"
+	"github.com/mevarx/Midas/internal/platform"
 	"github.com/mevarx/Midas/internal/ui"
 )
 
@@ -317,6 +318,29 @@ func (c *Ctx) requireVault() (string, error) {
 	f.Close()
 	_ = os.Remove(name)
 	return v, nil
+}
+
+// acquireVaultLock takes the vault-wide advisory lock. The returned release
+// function warns instead of failing and is safe to defer.
+func (c *Ctx) acquireVaultLock(vault string) (func(), error) {
+	dir := filepath.Join(vault, ".midas")
+	if err := os.Mkdir(dir, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
+		return nil, failf(ExitGeneral, "acquire vault lock: %v", err)
+	}
+	path := filepath.Join(dir, "LOCK")
+	handle, err := platform.Current().AcquireLock(path)
+	if err != nil {
+		var locked *platform.LockedError
+		if errors.As(err, &locked) {
+			return nil, failf(ExitGeneral, "another Midas operation is using vault %q (%v); wait for it to finish or run `midas doctor`", vault, err)
+		}
+		return nil, failf(ExitGeneral, "acquire vault lock: %v", err)
+	}
+	return func() {
+		if err := handle.Release(); err != nil {
+			c.UI.Warnf("release vault lock: %v", err)
+		}
+	}, nil
 }
 
 func (c *Ctx) confirm(question string, defaultYes bool) (bool, error) {

@@ -36,6 +36,11 @@ before publication.
   partial trees can be removed.
 - Add a regression test proving `directChild` rejects nested paths on every
   platform (Windows `filepath.Rel` returns backslashes).
+- Serialize mutating commands with an advisory vault lock
+  (`<vault>/.midas/LOCK`, flock on Unix and LockFileEx on Windows) and create
+  new operation journals with O_EXCL, so concurrent Midas processes fail
+  cleanly instead of racing on the same paths. Doctor reports a live lock
+  holder.
 - Verify each backup source file did not change during its copy (same file,
   size, modification time, and byte count). A torn backup set is discarded
   instead of being marked verified.

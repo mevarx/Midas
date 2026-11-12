@@ -36,6 +36,13 @@ func (c *Ctx) cmdRestore(args []string) error {
 	if err != nil {
 		return err
 	}
+	if !c.G.DryRun {
+		release, lerr := c.acquireVaultLock(vault)
+		if lerr != nil {
+			return lerr
+		}
+		defer release()
+	}
 	def, err := c.app(fs.Arg(0))
 	if err != nil {
 		return err

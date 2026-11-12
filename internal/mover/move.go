@@ -125,7 +125,11 @@ func MoveTarget(o MoveOptions) (entry manifest.Entry, err error) {
 	if o.BackupSet != nil {
 		j.BackupID = o.BackupSet.ID
 	}
-	if err := SaveJournal(o.Vault, j); err != nil {
+	if journal == nil {
+		if err := CreateJournal(o.Vault, j); err != nil {
+			return entry, fmt.Errorf("write journal: %w", err)
+		}
+	} else if err := SaveJournal(o.Vault, j); err != nil {
 		return entry, fmt.Errorf("write journal: %w", err)
 	}
 	success := false

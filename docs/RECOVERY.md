@@ -6,6 +6,25 @@ recommended next action in both human and `--json` output. Use `midas doctor
 --repair` only after reviewing the proposed action; `--dry-run` shows a repair
 plan without applying it. `--yes` alone does not enable repairs.
 
+## Vault lock
+
+Mutating commands take one advisory lock per vault, at
+`<vault>/.midas/LOCK`, for the whole operation: `move`, `resume`, `restore`,
+`rollback`, `backup delete`, and `doctor --repair`. Read-only commands
+(including `doctor` without `--repair`) and every `--dry-run` run do not take
+it.
+
+The lock is held by the operating system (`flock` on Unix, `LockFileEx` on
+Windows), so it is released automatically when its process exits, even after a
+crash. The file itself is kept; it stores the owner's metadata: `pid`,
+`hostname`, and `started_at` (UTC).
+
+If another Midas process holds the lock, the command fails before touching any
+data and exits with code `1`, naming the vault. Wait for the other operation to
+finish and retry. `midas doctor` reports a live holder and treats a leftover
+file without a live owner as informational: the OS released the advisory lock
+when that process exited, and the next operation reuses the file.
+
 ## Interrupted operations
 
 An operation journal records its ID, type, source, destination, checkpoint,

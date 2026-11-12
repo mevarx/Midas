@@ -66,7 +66,7 @@ func Restore(o RestoreOptions) error {
 		o.OperationID = id
 	}
 	j := &Journal{OperationID: o.OperationID, Operation: "restore", App: o.App, Target: o.Target, State: StateRestoring, Source: o.Source, Dest: o.Dest, Partial: partial}
-	if err := SaveJournal(o.Vault, j); err != nil {
+	if err := CreateJournal(o.Vault, j); err != nil {
 		return fmt.Errorf("write restore journal: %w", err)
 	}
 

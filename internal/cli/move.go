@@ -54,6 +54,13 @@ func (c *Ctx) cmdMove(args []string) error {
 	if err != nil {
 		return err
 	}
+	if !c.G.DryRun {
+		release, lerr := c.acquireVaultLock(vault)
+		if lerr != nil {
+			return lerr
+		}
+		defer release()
+	}
 	def, err := c.app(appID)
 	if err != nil {
 		return err

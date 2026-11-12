@@ -1,6 +1,7 @@
 package mover
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -375,4 +376,50 @@ func TestMoveResumeRejectsMismatchedJournal(t *testing.T) {
 		t.Fatalf("mismatched backup resume error = %v", err)
 	}
 	assertRealDirectory(t, source, "source after refused resume")
+}
+
+func TestCreateJournalRefusesToOverwrite(t *testing.T) {
+	vault := t.TempDir()
+	source := filepath.Join(t.TempDir(), "home", "data")
+	dest := filepath.Join(vault, "apps", "example", "data")
+	id, err := NewOperationID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	j := &Journal{
+		OperationID: id, Operation: "move", App: "example", Target: "data", State: StateCopying,
+		Source: source, Dest: dest, Partial: dest + ".midas-partial", Bak: source + ".midas-bak",
+	}
+	if err := CreateJournal(vault, j); err != nil {
+		t.Fatalf("first CreateJournal: %v", err)
+	}
+	otherID, err := NewOperationID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = CreateJournal(vault, &Journal{
+		OperationID: otherID, Operation: "move", App: "example", Target: "data", State: StateCopying,
+		Source: source, Dest: dest, Partial: dest + ".midas-partial", Bak: source + ".midas-bak",
+	})
+	if err == nil {
+		t.Fatal("second CreateJournal overwrote an existing journal")
+	}
+	if !errors.Is(err, os.ErrExist) {
+		t.Fatalf("second CreateJournal error = %v, want os.ErrExist", err)
+	}
+	if !strings.Contains(err.Error(), "example/data") {
+		t.Fatalf("second CreateJournal error does not name the app/target: %v", err)
+	}
+	loaded, err := LoadJournal(vault, "example", "data")
+	if err != nil || loaded == nil || loaded.OperationID != id {
+		t.Fatalf("journal after refused create = %+v, %v; want operation %s", loaded, err, id)
+	}
+	loaded.State = StateVerifying
+	if err := SaveJournal(vault, loaded); err != nil {
+		t.Fatalf("SaveJournal update: %v", err)
+	}
+	updated, err := LoadJournal(vault, "example", "data")
+	if err != nil || updated == nil || updated.State != StateVerifying {
+		t.Fatalf("updated journal = %+v, %v; want state %s", updated, err, StateVerifying)
+	}
 }

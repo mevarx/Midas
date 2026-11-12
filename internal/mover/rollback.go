@@ -146,6 +146,7 @@ func Rollback(o RollbackOptions) (rep *RollbackReport, returnErr error) {
 			return rep, err
 		}
 	}
+	freshJournal := journal == nil
 	if journal == nil {
 		journal = &Journal{App: o.App, Target: o.Target}
 	}
@@ -171,7 +172,11 @@ func Rollback(o RollbackOptions) (rep *RollbackReport, returnErr error) {
 	if o.BackupSet != nil {
 		journal.BackupID = o.BackupSet.ID
 	}
-	if err := SaveJournal(o.Vault, journal); err != nil {
+	if freshJournal {
+		if err := CreateJournal(o.Vault, journal); err != nil {
+			return rep, fmt.Errorf("write rollback journal: %w", err)
+		}
+	} else if err := SaveJournal(o.Vault, journal); err != nil {
 		return rep, fmt.Errorf("write rollback journal: %w", err)
 	}
 	journalActive := true

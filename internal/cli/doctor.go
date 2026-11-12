@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/mevarx/Midas/internal/apps"
 	"github.com/mevarx/Midas/internal/backup"
@@ -34,6 +35,13 @@ func (c *Ctx) cmdDoctor(args []string) error {
 	if err != nil {
 		return err
 	}
+	if *repair && !c.G.DryRun {
+		release, lerr := c.acquireVaultLock(vault)
+		if lerr != nil {
+			return lerr
+		}
+		defer release()
+	}
 
 	report := DoctorReport{Findings: []DoctorFinding{}, Operations: []RecoveryOperation{}, Issues: []string{}}
 	add := func(code, severity, app, target, path, message, next string) {
@@ -50,6 +58,26 @@ func (c *Ctx) cmdDoctor(args []string) error {
 	}
 
 	manifestPath := filepath.Join(vault, ".midas", "manifest.json")
+	lockPath := filepath.Join(vault, ".midas", "LOCK")
+	if holder, holderErr := platform.ReadLockHolder(lockPath); holderErr == nil {
+		hostname, _ := os.Hostname()
+		sameHost := holder.Hostname == "" || platform.EnvKeysEqual(holder.Hostname, hostname)
+		if holder.PID != 0 && holder.PID != int32(os.Getpid()) && sameHost && platform.Current().IsProcessAlive(holder.PID) {
+			where := ""
+			if holder.Hostname != "" {
+				where = " on " + holder.Hostname
+			}
+			started := ""
+			if !holder.StartedAt.IsZero() {
+				started = " since " + holder.StartedAt.UTC().Format(time.RFC3339)
+			}
+			add("lock.vault_held", "warning", "", "", lockPath, fmt.Sprintf("vault lock is held by pid %d%s%s", holder.PID, where, started), "wait for the other operation to finish")
+		} else {
+			add("lock.vault_stale", "info", "", "", lockPath, fmt.Sprintf("vault lock file records pid %d; no other live process holds the advisory lock. The OS releases it when its process exits, so a leftover file is harmless and is reused", holder.PID), "no action required")
+		}
+	} else if !errors.Is(holderErr, os.ErrNotExist) {
+		add("lock.vault_unreadable", "warning", "", "", lockPath, "vault lock metadata is unreadable: "+holderErr.Error(), "inspect the lock file and remove it only if no Midas operation is running")
+	}
 	_, statErr := os.Lstat(manifestPath)
 	manifestMissing := errors.Is(statErr, os.ErrNotExist)
 	m, manifestErr := manifest.Load(vault)

@@ -6,12 +6,14 @@
 package platform
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // ProcInfo describes one running process that matched a detection rule.
@@ -66,6 +68,97 @@ type Platform interface {
 
 	// IsProcessAlive reports whether a PID belongs to a running process.
 	IsProcessAlive(pid int32) bool
+
+	// AcquireLock takes an exclusive advisory lock on path, creating the file
+	// if needed, and writes the holder metadata into it. It never blocks: a
+	// lock held by anyone else returns a *LockedError.
+	AcquireLock(path string) (LockHandle, error)
+}
+
+// LockHolder identifies the process that owns a vault lock.
+type LockHolder struct {
+	PID       int32     `json:"pid"`
+	Hostname  string    `json:"hostname"`
+	StartedAt time.Time `json:"started_at"`
+}
+
+// LockHandle is an acquired advisory lock. Release unlocks and closes the
+// underlying file; the lock file itself is kept so its metadata stays
+// readable.
+type LockHandle interface {
+	Release() error
+}
+
+// ErrLocked reports that a lock is held by another process.
+var ErrLocked = errors.New("lock is held by another process")
+
+// LockedError describes a lock that could not be acquired.
+type LockedError struct {
+	Path   string
+	Holder LockHolder
+	Cause  error
+}
+
+func (e *LockedError) Error() string {
+	who := "another process"
+	if e.Holder.PID != 0 {
+		details := fmt.Sprintf("pid %d", e.Holder.PID)
+		if e.Holder.Hostname != "" {
+			details += ", host " + e.Holder.Hostname
+		}
+		if !e.Holder.StartedAt.IsZero() {
+			details += ", started " + e.Holder.StartedAt.UTC().Format(time.RFC3339)
+		}
+		who += " (" + details + ")"
+	}
+	if e.Path == "" {
+		if e.Holder.PID == 0 {
+			return ErrLocked.Error()
+		}
+		return fmt.Sprintf("%s: %s", ErrLocked.Error(), who)
+	}
+	return fmt.Sprintf("lock %q is held by %s", e.Path, who)
+}
+
+func (e *LockedError) Unwrap() error {
+	if e.Cause != nil {
+		return errors.Join(ErrLocked, e.Cause)
+	}
+	return ErrLocked
+}
+
+// ReadLockHolder reads and parses the metadata written when a lock was
+// acquired. A missing file returns the os error unchanged.
+func ReadLockHolder(path string) (LockHolder, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return LockHolder{}, err
+	}
+	var holder LockHolder
+	if err := json.Unmarshal(data, &holder); err != nil {
+		return LockHolder{}, err
+	}
+	return holder, nil
+}
+
+// writeLockHolder overwrites the locked file with this process's metadata.
+func writeLockHolder(f *os.File) error {
+	hostname, _ := os.Hostname()
+	data, err := json.Marshal(LockHolder{
+		PID:       int32(os.Getpid()),
+		Hostname:  hostname,
+		StartedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		return err
+	}
+	if err := f.Truncate(0); err != nil {
+		return err
+	}
+	if _, err := f.WriteAt(data, 0); err != nil {
+		return err
+	}
+	return f.Sync()
 }
 
 // Current returns the Platform implementation for the running OS.

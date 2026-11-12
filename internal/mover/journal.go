@@ -113,33 +113,48 @@ func LoadJournal(vault, app, target string) (*Journal, error) {
 	return j, nil
 }
 
-// SaveJournal writes the journal atomically.
+// SaveJournal writes the journal atomically, replacing any existing file.
 func SaveJournal(vault string, j *Journal) error {
-	if !validJournalComponent(j.App) || !validJournalComponent(j.Target) {
-		return fmt.Errorf("invalid journal identity %q/%q", j.App, j.Target)
-	}
-	if j.OperationID == "" {
-		id, err := NewOperationID()
-		if err != nil {
-			return err
-		}
-		j.OperationID = id
-	}
-	if !validOperationID(j.OperationID) {
-		return errors.New("invalid journal operation ID")
-	}
-	j.Schema = 1
-	j.UpdatedAt = time.Now().UTC()
-	if err := validateJournal(vault, j, j.App, j.Target); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(j, "", "  ")
+	return writeJournal(vault, j, false)
+}
+
+// CreateJournal writes a new journal and refuses to overwrite an existing
+// one, so two operations for the same app/target cannot silently replace each
+// other's state.
+func CreateJournal(vault string, j *Journal) error {
+	return writeJournal(vault, j, true)
+}
+
+// writeJournal is the single write path for both journal creation and
+// updates. Exclusive creation uses O_EXCL; updates keep the atomic
+// CreateTemp+Sync+Rename semantics.
+func writeJournal(vault string, j *Journal, exclusive bool) error {
+	data, path, err := prepareJournal(vault, j)
 	if err != nil {
 		return err
 	}
-	path := JournalPath(vault, j.App, j.Target)
 	if err := validateJournalDirs(vault, true); err != nil {
 		return err
+	}
+	if exclusive {
+		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if err != nil {
+			if errors.Is(err, os.ErrExist) {
+				return fmt.Errorf("journal for %s/%s already exists at %s; another Midas operation may be running for this target: %w", j.App, j.Target, path, err)
+			}
+			return err
+		}
+		if _, err := f.Write(data); err != nil {
+			f.Close()
+			os.Remove(path)
+			return err
+		}
+		if err := f.Sync(); err != nil {
+			f.Close()
+			os.Remove(path)
+			return err
+		}
+		return f.Close()
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".journal-*")
 	if err != nil {
@@ -159,6 +174,34 @@ func SaveJournal(vault string, j *Journal) error {
 		return err
 	}
 	return os.Rename(name, path)
+}
+
+// prepareJournal validates j, fills in generated metadata, and returns the
+// encoded bytes and target path shared by both write paths.
+func prepareJournal(vault string, j *Journal) ([]byte, string, error) {
+	if !validJournalComponent(j.App) || !validJournalComponent(j.Target) {
+		return nil, "", fmt.Errorf("invalid journal identity %q/%q", j.App, j.Target)
+	}
+	if j.OperationID == "" {
+		id, err := NewOperationID()
+		if err != nil {
+			return nil, "", err
+		}
+		j.OperationID = id
+	}
+	if !validOperationID(j.OperationID) {
+		return nil, "", errors.New("invalid journal operation ID")
+	}
+	j.Schema = 1
+	j.UpdatedAt = time.Now().UTC()
+	if err := validateJournal(vault, j, j.App, j.Target); err != nil {
+		return nil, "", err
+	}
+	data, err := json.MarshalIndent(j, "", "  ")
+	if err != nil {
+		return nil, "", err
+	}
+	return data, JournalPath(vault, j.App, j.Target), nil
 }
 
 // RemoveJournal deletes a journal (only after the move reached a safe state).

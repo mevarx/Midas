@@ -205,6 +205,13 @@ func (c *Ctx) backupDelete(args []string) error {
 	if err != nil {
 		return err
 	}
+	if !c.G.DryRun {
+		release, lerr := c.acquireVaultLock(vault)
+		if lerr != nil {
+			return lerr
+		}
+		defer release()
+	}
 	mgr := c.backupManager(vault)
 
 	if *allCompleted {
