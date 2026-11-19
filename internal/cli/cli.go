@@ -318,6 +318,25 @@ func (c *Ctx) requireVaultReadOnly() (string, error) {
 	return v, nil
 }
 
+// vaultOrDiscovery resolves the vault for read-only discovery commands.
+// Discovery is allowed only when no vault is configured at all — the same
+// condition under which Vault() reports "no vault configured" — so commands
+// like `list` can show installed apps before `midas init`. A configured
+// vault always goes through full resolution and reachability checks: any
+// failure (missing drive, or a relative vault whose working directory is
+// unavailable) propagates as a hard error. Discovery never masks a broken
+// configured vault.
+func (c *Ctx) vaultOrDiscovery() (string, bool, error) {
+	if c.G.Vault == "" && c.Cfg.Vault == "" {
+		return "", true, nil
+	}
+	v, err := c.requireVaultReadOnly()
+	if err != nil {
+		return "", false, err
+	}
+	return v, false, nil
+}
+
 // requireVault resolves the vault and checks it exists and is writable.
 func (c *Ctx) requireVault() (string, error) {
 	v, err := c.requireVaultReadOnly()

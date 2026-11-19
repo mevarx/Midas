@@ -27,13 +27,19 @@ func (c *Ctx) cmdList(args []string) error {
 	if err := c.syncGlobal(vaultF, cfgF, dry, yes, jsonF, verbose); err != nil {
 		return err
 	}
-	vault, err := c.requireVaultReadOnly()
+	vault, discovery, err := c.vaultOrDiscovery()
 	if err != nil {
 		return err
 	}
-	m, err := manifest.Load(vault)
-	if err != nil {
-		return err
+	var m *manifest.Manifest
+	if discovery {
+		m = &manifest.Manifest{}
+		c.UI.Warnf("no vault configured; showing installed apps only — run `midas init --vault <path>` to enable moves")
+	} else {
+		m, err = manifest.Load(vault)
+		if err != nil {
+			return err
+		}
 	}
 	defs, err := apps.All()
 	if err != nil {
