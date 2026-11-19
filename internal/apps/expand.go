@@ -13,17 +13,30 @@ import (
 var (
 	tokenRe = regexp.MustCompile(`\{([a-z_]+)\}`)
 	winEnv  = regexp.MustCompile(`%([^%]+)%`)
-	shEnv   = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)`)
+	// shEnv matches $VAR, ${VAR} and ${VAR:-default}. The default is used
+	// when VAR is unset or empty, matching shell semantics; it may contain
+	// ~ and {token} placeholders (tokens are expanded before env vars) but
+	// not nested env references or a literal '}'.
+	shEnv = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}|\$([A-Za-z_][A-Za-z0-9_]*)`)
 )
 
 // ExpandPath expands ~, environment variables and {token} placeholders.
-// The result is cleaned but not made absolute; callers validate absoluteness.
+// Env references support $VAR, ${VAR}, %VAR% and ${VAR:-default}; a
+// referenced variable that is unset or empty without a default is an error,
+// never a silently empty path segment. The result is cleaned but not made
+// absolute; callers validate absoluteness.
 func ExpandPath(raw string) (string, error) {
+	return expandWithTokens(raw, platform.Current().PathTokens())
+}
+
+// expandWithTokens is ExpandPath with an explicit token set, so definitions
+// can be expanded and tested for any OS, not just the host.
+func expandWithTokens(raw string, tokens map[string]string) (string, error) {
 	if strings.TrimSpace(raw) == "" {
 		return "", fmt.Errorf("empty path")
 	}
-	tokens := platform.Current().PathTokens()
 	s := raw
+	var missingEnv []string
 
 	s = tokenRe.ReplaceAllStringFunc(s, func(m string) string {
 		name := strings.TrimSuffix(strings.TrimPrefix(m, "{"), "}")
@@ -33,15 +46,31 @@ func ExpandPath(raw string) (string, error) {
 		return m
 	})
 	s = winEnv.ReplaceAllStringFunc(s, func(m string) string {
-		return os.Getenv(m[1 : len(m)-1])
+		name := m[1 : len(m)-1]
+		v := os.Getenv(name)
+		if v == "" {
+			missingEnv = append(missingEnv, name)
+		}
+		return v
 	})
 	s = shEnv.ReplaceAllStringFunc(s, func(m string) string {
 		sub := shEnv.FindStringSubmatch(m)
-		if sub[1] != "" {
-			return os.Getenv(sub[1])
+		name, fallback := sub[1], sub[2]
+		if name == "" {
+			name = sub[3] // bare $VAR form
 		}
-		return os.Getenv(sub[2])
+		v := os.Getenv(name)
+		if v == "" {
+			v = fallback
+		}
+		if v == "" {
+			missingEnv = append(missingEnv, name)
+		}
+		return v
 	})
+	if len(missingEnv) > 0 {
+		return "", fmt.Errorf("environment variable(s) not set or empty: %s (use ${VAR:-default} to supply a fallback)", strings.Join(missingEnv, ", "))
+	}
 
 	home := tokens["home"]
 	if s == "~" {
