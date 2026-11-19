@@ -1,0 +1,7 @@
+# Normalize line endings so gofmt and byte-sensitive tooling behave the
+# same on Windows, macOS and Linux checkouts.
+* text=auto eol=lf
+*.exe binary
+*.zip binary
+*.gz binary
+*.png binary

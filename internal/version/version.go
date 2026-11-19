@@ -2,7 +2,7 @@
 package version
 
 // Version is overridden by GoReleaser via -ldflags at release time.
-var Version = "1.1.0"
+var Version = "1.2.0"
 
 // Commit is injected by GoReleaser for traceable release artifacts.
 var Commit = "unknown"
