@@ -1,27 +1,47 @@
 id = "hermes"
 name = "Hermes"
-homepage = "https://github.com/"
-description = "Hermes agent data folder"
+homepage = "https://hermes-agent.nousresearch.com"
+description = "Nous Research's Hermes agent home: config, sessions, state and tools"
 
 [process]
-windows = ["hermes.exe"]
-linux = ["hermes"]
-darwin = ["hermes"]
+windows = ["hermes.exe", "hermes-acp.exe"]
+linux = ["hermes", "hermes-acp"]
+darwin = ["hermes", "hermes-acp"]
 
 [launch]
 command = "hermes"
 
 [[target]]
 name = "data"
-windows = "~/.hermes"
-linux = "~/.hermes"
-darwin = "~/.hermes"
+windows = "${HERMES_HOME:-{localappdata}/hermes}"
+linux = "${HERMES_HOME:-~/.hermes}"
+darwin = "${HERMES_HOME:-~/.hermes}"
 kind = "dir"
 
 [backup]
-include = ["*.json", "*.toml", "*.yaml", "*.md", "agents/**", "plugins/**"]
-exclude = ["cache/**", "logs/**", "tmp/**", "**/node_modules/**", "*.log"]
+include = [
+  "config.yaml",
+  ".env",
+  "SOUL.md",
+  "auth.json",
+  "*.md",
+  "memories/**",
+  "skills/**",
+  "cron/**",
+]
+exclude = [
+  "cache/**",
+  "logs/**",
+  "tmp/**",
+  "tools/**",
+  "installs/**",
+  "hermes-agent/**",
+  "lsp/**",
+  "bin/**",
+  "*.db*",
+  "**/node_modules/**",
+]
 max_file_mb = 50
 
 [notes]
-text = "Paths are a starting point; verify against the installed version."
+text = "The Windows default is %LOCALAPPDATA%\\hermes, not ~/.hermes; HERMES_HOME overrides the root on every OS. The home mixes config, secrets, state.db (SQLite WAL) and a full source checkout with Python environments (hermes-agent/, tools/, installs/) — that is the bulk of the footprint. Stop the agent and gateway before moving: lock files live in the root. Source installs launched through python may not be detected by name; close them manually."

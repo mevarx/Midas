@@ -15,9 +15,9 @@ command = "claude"
 
 [[target]]
 name = "data"
-windows = "~/.claude"
-linux = "~/.claude"
-darwin = "~/.claude"
+windows = "${CLAUDE_CONFIG_DIR:-~/.claude}"
+linux = "${CLAUDE_CONFIG_DIR:-~/.claude}"
+darwin = "${CLAUDE_CONFIG_DIR:-~/.claude}"
 kind = "dir"
 
 [env]
@@ -50,4 +50,4 @@ exclude = [
 max_file_mb = 50
 
 [notes]
-text = "Do not move ~/.claude.json; it is a file, not a folder."
+text = "Do not move ~/.claude.json; it is a file, not a folder. When CLAUDE_CONFIG_DIR is set, .claude.json lives inside that directory instead, and Midas follows the override."
