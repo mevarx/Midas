@@ -80,7 +80,25 @@ midas apps show myapp
 | `{appdata}` | `%APPDATA%` | config dir | config dir |
 | `{localappdata}` | `%LOCALAPPDATA%` | config dir | config dir |
 
-Environment variables are expanded too: `$VAR`, `${VAR}`, `%VAR%`.
+Environment variables are expanded too: `$VAR`, `${VAR}`, `%VAR%` and
+`${VAR:-default}`. The default applies when the variable is unset or empty;
+it may contain `~` and `{token}` placeholders. A referenced variable that is
+unset or empty **without** a default is an error — paths never silently
+collapse to an empty segment. Use documented relocation overrides in
+defaults, for example:
+
+```toml
+[[target]]
+name = "data"
+windows = "${CODEX_HOME:-~/.codex}"
+linux = "${CODEX_HOME:-~/.codex}"
+darwin = "${CODEX_HOME:-~/.codex}"
+kind = "dir"
+```
+
+Only honour overrides the vendor documents. Note parent-vs-final semantics
+carefully: `CODEX_HOME` is the directory itself, while `GEMINI_CLI_HOME` is
+its parent (`"${GEMINI_CLI_HOME:-~}/.gemini"`).
 
 ## Optional sections
 
@@ -120,8 +138,17 @@ Shown by `midas apps show`.
 
 ## Submitting a built-in definition
 
-1. Copy your file to `apps/<id>.toml`.
-2. Add a row to the README's supported-apps table.
-3. Run `go build ./...`, `go vet ./...`, and `midas apps validate apps/<id>.toml`.
-4. Note the app version you verified against in the pull request. Paths and
+1. Research the default paths against vendor docs or the tool's
+   path-resolution source code — not guesses. Record the evidence in
+   [RESEARCH.md](RESEARCH.md) with citations.
+2. Copy your file to `apps/<id>.toml`.
+3. Add a golden entry for every target on every OS it supports to
+   `goldenPaths` in `internal/apps/registry_test.go`. The golden tests
+   expand each target for Windows, macOS and Linux from any host and fail
+   if a default drifts from the researched value.
+4. Add a row to the README's supported-apps table and the coverage table in
+   [COMPATIBILITY.md](COMPATIBILITY.md).
+5. Run `go build ./...`, `go vet ./...`, `go test ./internal/apps/`, and
+   `midas apps validate apps/<id>.toml`.
+6. Note the app version you verified against in the pull request. Paths and
    process names change between releases; reviewers will ask.

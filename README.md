@@ -12,7 +12,7 @@ midas run claude-code -- claude
 
 ## ⚠️ Back up before first use
 
-Midas takes its own verified safety backup before it changes anything, but this is beta software. Keep an independent copy of anything irreplaceable before your first move. Midas never deletes user data until a copy has been verified and the link health-checked, and every move can be undone with `midas rollback` — but no tool is a substitute for a real backup.
+Midas takes its own verified safety backup before it changes anything. Keep an independent copy of anything irreplaceable before your first move. Midas never deletes user data until a copy has been verified and the link health-checked, and every move can be undone with `midas rollback` — but no tool is a substitute for a real backup.
 
 ## How it works
 
@@ -119,11 +119,34 @@ Built-in definitions live in [`apps/`](apps/). Add your own TOML in `midas apps 
 
 | App | Targets |
 |---|---|
+| `aider` | `~/.aider` (most growth is per-repo, see notes) |
+| `amp` | data, config, installer home |
 | `claude-code` | `~/.claude` (leaves `~/.claude.json` alone) |
-| `opencode` | `data`, `config`, `cache`, `state` XDG folders |
-| `hermes` | `~/.hermes` |
+| `cline` | `~/.cline`, legacy VS Code task store |
+| `codex` | `~/.codex` |
+| `continue` | `~/.continue` |
+| `copilot-cli` | `~/.copilot`, platform cache dir |
+| `crush` | config, data, cache |
+| `cursor` | editor userData, `~/.cursor` CLI tree, sync stores |
+| `droid` | `~/.factory` |
+| `gemini-cli` | `~/.gemini` |
+| `goose` | config, data, state, cache |
+| `hermes` | Hermes home (`%LOCALAPPDATA%\hermes` on Windows, `~/.hermes` elsewhere) |
+| `iflow` | `~/.iflow` |
+| `opencode` | data, config, cache, state (raw XDG paths on every OS) |
+| `qwen-code` | `~/.qwen` |
+| `roo-code` | VS Code task store, `~/.roo`, CLI shim state |
+| `windsurf` | Cascade store, Windsurf and Devin userData roots |
+| `zed` | data, config |
 
-Paths and process names vary by version — run `midas apps show <id>` and `midas list` before moving.
+Default paths, relocation env overrides and per-OS caveats are researched
+against vendor docs and path-resolution source code — see
+[docs/RESEARCH.md](docs/RESEARCH.md) for the evidence and popularity data.
+Every built-in default is pinned by golden tests that expand it for all
+three OSes from any host, and documented overrides (`CODEX_HOME`,
+`CLAUDE_CONFIG_DIR`, `HERMES_HOME`, `XDG_*`, …) are honoured when set.
+Paths and process names vary by version — run `midas apps show <id>` and
+`midas list` before moving.
 
 ## Backups and safety net
 
@@ -173,6 +196,7 @@ midas apps validate ./my-app.toml
 - [docs/JSON.md](docs/JSON.md) — machine-readable output contract
 - [docs/PLATFORMS.md](docs/PLATFORMS.md) — CI coverage and platform limitations
 - [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) — format and platform policy
+- [docs/RESEARCH.md](docs/RESEARCH.md) — AI harness storage research and path evidence
 - [docs/PERFORMANCE.md](docs/PERFORMANCE.md) — copy benchmarks and methodology
 - [docs/INSTALL.md](docs/INSTALL.md) — checksum verification, upgrade, uninstall
 - [docs/DECISIONS.md](docs/DECISIONS.md) — implementation choices

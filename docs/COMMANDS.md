@@ -7,7 +7,7 @@ Global options may precede or follow a command: `--vault`, `--config`,
 | Command | Reads | Possible changes |
 |---|---|---|
 | `init` | Config and requested paths | Writes config and vault metadata |
-| `list` | App definitions, manifest, target paths | None |
+| `list` | App definitions, manifest (if a vault is configured), target paths | None |
 | `apps list/show/validate/path` | App definitions and host paths | None |
 | `plan <app>` / `analyze <app>` | Definitions, source trees, available-space metadata | None; estimates only |
 | `move <app>` | Source, config, backup and vault state | Backup, journal, verified copy/rename, link, manifest |
@@ -25,6 +25,11 @@ Global options may precede or follow a command: `--vault`, `--config`,
 `--copy-workers` is accepted by move/resume/restore/rollback, with a bounded
 range of 1–16 and a default of 1. The worker option does not weaken hashing,
 verification, backup, or recovery requirements.
+
+`list` works before `init`: with no vault configured it lists installed apps
+in discovery mode (empty manifest, a warning on stderr). A configured but
+unreachable vault remains a hard exit-5 error — discovery never masks a
+missing drive.
 
 Exit codes: 0 success; 1 general error; 2 usage; 3 running/unknown process state;
 4 insufficient space; 5 vault unavailable; 6 verification failure; 7

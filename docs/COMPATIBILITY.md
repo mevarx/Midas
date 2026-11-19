@@ -4,6 +4,50 @@ This policy defines the supported platforms, formats, and versioning rules.
 It does not claim that a release has passed qualification before its CI and
 release checks complete.
 
+## App coverage
+
+19 built-in app definitions ship as of 1.2.0. Every default path is
+researched against vendor docs or path-resolution source code and pinned by
+golden tests (`TestBuiltinGoldenPaths`) that expand each target for
+Windows, macOS and Linux from any host. The evidence, popularity data and
+per-app caveats live in [RESEARCH.md](RESEARCH.md).
+
+| App | Windows | macOS | Linux | Evidence level |
+|---|---|---|---|---|
+| aider | ✓ | ✓ | ✓ | verified |
+| amp | ✓ | ✓ | ✓ | partial (closed source) |
+| claude-code | ✓ | ✓ | ✓ | verified |
+| cline | ✓ | ✓ | ✓ | verified |
+| codex | ✓ | ✓ | ✓ | verified |
+| continue | ✓ | ✓ | ✓ | verified (archived upstream) |
+| copilot-cli | ✓ | ✓ | ✓ | verified |
+| crush | ✓ | ✓ | ✓ | verified |
+| cursor | ✓ | ✓ | ✓ | verified |
+| droid | ✓ | ✓ | ✓ | partial (closed source) |
+| gemini-cli | ✓ | ✓ | ✓ | verified (sunset upstream) |
+| goose | ✓ | ✓ | ✓ | verified |
+| hermes | ✓ | ✓ | ✓ | verified |
+| iflow | ✓ | ✓ | ✓ | partial (Windows inferred) |
+| opencode | ✓ | ✓ | ✓ | verified |
+| qwen-code | ✓ | ✓ | ✓ | verified |
+| roo-code | ✓ | ✓ | ✓ | verified (idle upstream) |
+| windsurf | ✓ | ✓ | ✓ | partial (mid-rename) |
+| zed | ✓ | ✓ | ✓ | verified |
+
+Coverage rules:
+
+- Only vendor-documented relocation overrides are honoured in path
+  templates; undocumented knobs are recorded in each definition's notes
+  and can be handled with a local override definition.
+- A target that does not exist on an OS is omitted for that OS (for
+  example Goose's state dir on Windows, Cursor's sync stores on macOS).
+- "partial" means some subdirectories rest on binary analysis or trusted
+  third-party corpora rather than vendor publication; `midas list` and
+  `midas plan` show what is actually present before anything moves.
+- App layouts change between versions. Definitions name the verified
+  layout as of the research snapshot; `midas doctor` detects drift after
+  app updates.
+
 ## Platform and build targets
 
 - Windows 10 22H2 and Windows 11, amd64; directory junctions are used.

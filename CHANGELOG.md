@@ -103,3 +103,41 @@ before publication.
   and release artifact verification.
 - Keep sequential copying as the default; benchmark results are hardware and
   filesystem specific.
+
+## 1.2.0
+
+- Expand the built-in registry from 3 to 19 apps: add Codex CLI, Gemini CLI,
+  GitHub Copilot CLI, Qwen Code, iFlow CLI, Aider, Goose, Crush, Amp,
+  Factory Droid, Cursor, Windsurf/Devin Desktop, Zed, Cline, Roo Code and
+  Continue. Defaults, relocation overrides and per-OS caveats are researched
+  against vendor docs and path-resolution source code; the evidence and
+  popularity data are recorded in docs/RESEARCH.md.
+- Fix OpenCode defaults on Windows and macOS: OpenCode uses raw XDG paths on
+  every OS (`%USERPROFILE%\.local\share\opencode`, `~/.local/share/opencode`),
+  not AppData or Library/Application Support. Moves now target the directories
+  the tool actually reads.
+- Fix the Hermes Windows default: `%LOCALAPPDATA%\hermes`, not `~/.hermes`,
+  and honour `HERMES_HOME` on every OS.
+- Honour `CLAUDE_CONFIG_DIR` for Claude Code, including the documented
+  behaviour that `.claude.json` moves inside the overridden directory.
+- Path expansion supports `${VAR:-default}` fallbacks. A referenced variable
+  that is unset or empty without a default is now a hard error instead of a
+  silently empty path segment.
+- Built-in definitions honour documented relocation overrides when set:
+  `CODEX_HOME`, `GEMINI_CLI_HOME` (parent semantics), `COPILOT_HOME`,
+  `COPILOT_CACHE_HOME`, `QWEN_HOME`, `CRUSH_GLOBAL_CONFIG`,
+  `CRUSH_GLOBAL_DATA`, `CRUSH_CACHE_DIR`, `AMP_HOME`, `CURSOR_DATA_DIR`,
+  `CLINE_DIR`, `CONTINUE_GLOBAL_DIR` and `XDG_*`. Split stores ship as
+  separate targets (Copilot data+cache, Cursor userData+CLI+sync stores,
+  Zed data+config, Cline home+legacy store, Windsurf cascade+both userData
+  roots) so a move never silently leaves half the data behind.
+- Add golden registry tests: every built-in target is pinned per OS from any
+  host (`TestBuiltinGoldenPaths`), every override is proven to redirect
+  expansion (`TestBuiltinEnvOverrides`), and host containment is validated
+  for all definitions. New built-ins must add golden entries and research
+  citations.
+- `midas list` works before `midas init`: discovery mode lists installed apps
+  with a warning instead of a usage error. A configured but unreachable vault
+  remains a hard exit-5 error.
+- Pin LF line endings with `.gitattributes` so gofmt and byte-sensitive
+  tooling behave identically on Windows, macOS and Linux checkouts.
