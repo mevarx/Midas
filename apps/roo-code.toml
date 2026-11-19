@@ -1,0 +1,55 @@
+id = "roo-code"
+name = "Roo Code"
+homepage = "https://roocode.com"
+description = "Roo Code agent: VS Code task store, shared config and CLI shim state"
+
+[process]
+windows = ["Code.exe", "Cursor.exe", "Windsurf.exe", "VSCodium.exe"]
+linux = ["code", "cursor", "windsurf", "codium"]
+darwin = ["Code", "Cursor", "Windsurf", "VSCodium"]
+
+[launch]
+command = "roo"
+
+[[target]]
+name = "vscode"
+windows = "{appdata}/Code/User/globalStorage/rooveterinaryinc.roo-cline"
+linux = "{xdg_config}/Code/User/globalStorage/rooveterinaryinc.roo-cline"
+darwin = "~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline"
+kind = "dir"
+
+[[target]]
+name = "config"
+windows = "~/.roo"
+linux = "~/.roo"
+darwin = "~/.roo"
+kind = "dir"
+
+[[target]]
+name = "cli"
+windows = "~/.vscode-mock"
+linux = "~/.vscode-mock"
+darwin = "~/.vscode-mock"
+kind = "dir"
+
+[backup]
+include = [
+  "settings/**",
+  "tasks/_index.json",
+  "rules/**",
+  "cli-settings.json",
+  "global-storage/global-state.json",
+  "global-storage/configuration.json",
+]
+exclude = [
+  "tasks/**",
+  "checkpoints/**",
+  "cache/**",
+  "logs/**",
+  "global-storage/tasks/**",
+  "workspace-storage/**",
+]
+max_file_mb = 50
+
+[notes]
+text = "Check roo-cline.customStoragePath in VS Code settings first: if set, the extension already writes elsewhere and the default folder is stale. The folder name is lowercased (rooveterinaryinc.roo-cline); a wrong-case path on Linux silently creates a second, empty store. The roo CLI keeps a parallel tree in ~/.vscode-mock (cli target). Other hosts (Cursor, Windsurf, VSCodium, Insiders) and remote ~/.vscode-server have separate roots. Detection treats any open VS Code-family editor as a potential writer. Roo has been idle since May 2026, so the layout is stable."

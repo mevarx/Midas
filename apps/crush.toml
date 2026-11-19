@@ -1,0 +1,41 @@
+id = "crush"
+name = "Crush"
+homepage = "https://github.com/charmbracelet/crush"
+description = "Charm's glamorous AI coding agent for the terminal"
+
+[process]
+windows = ["crush.exe"]
+linux = ["crush"]
+darwin = ["crush"]
+
+[launch]
+command = "crush"
+
+[[target]]
+name = "config"
+windows = "${CRUSH_GLOBAL_CONFIG:-~/.config/crush}"
+linux = "${CRUSH_GLOBAL_CONFIG:-{xdg_config}/crush}"
+darwin = "${CRUSH_GLOBAL_CONFIG:-~/.config/crush}"
+kind = "dir"
+
+[[target]]
+name = "data"
+windows = "${CRUSH_GLOBAL_DATA:-{localappdata}/crush}"
+linux = "${CRUSH_GLOBAL_DATA:-{xdg_data}/crush}"
+darwin = "${CRUSH_GLOBAL_DATA:-~/.local/share/crush}"
+kind = "dir"
+
+[[target]]
+name = "cache"
+windows = "${CRUSH_CACHE_DIR:-{localappdata}/crush/cache}"
+linux = "${CRUSH_CACHE_DIR:-{xdg_cache}/crush}"
+darwin = "${CRUSH_CACHE_DIR:-~/.cache/crush}"
+kind = "dir"
+
+[backup]
+include = ["crush.json", "crushrc", "projects.json"]
+exclude = ["cache/**"]
+max_file_mb = 25
+
+[notes]
+text = "Crush keeps config in ~/.config/crush on every OS, including Windows — not %APPDATA%. Most growth is per-project: <project>/.crush holds crush.db (SQLite WAL) and logs, so moving the global dirs reclaims little unless CRUSH_DATA_DIR or --data-dir also points elsewhere. XDG_CONFIG_HOME is honoured on Windows too; if you set it, add a local override definition. Stop Crush (and any server process holding the DB) before moving."

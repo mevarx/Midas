@@ -1,0 +1,56 @@
+id = "copilot-cli"
+name = "GitHub Copilot CLI"
+homepage = "https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/overview"
+description = "GitHub's standalone terminal agent (not the VS Code extension)"
+
+[process]
+windows = ["copilot.exe"]
+linux = ["copilot"]
+darwin = ["copilot"]
+
+[launch]
+command = "copilot"
+
+[[target]]
+name = "data"
+windows = "${COPILOT_HOME:-~/.copilot}"
+linux = "${COPILOT_HOME:-~/.copilot}"
+darwin = "${COPILOT_HOME:-~/.copilot}"
+kind = "dir"
+
+[[target]]
+name = "cache"
+windows = "${COPILOT_CACHE_HOME:-{localappdata}/copilot}"
+linux = "${COPILOT_CACHE_HOME:-{xdg_cache}/copilot}"
+darwin = "${COPILOT_CACHE_HOME:-~/Library/Caches/copilot}"
+kind = "dir"
+
+[backup]
+include = [
+  "settings.json",
+  "config.json",
+  "permissions-config.json",
+  "providers.json",
+  "mcp-config.json",
+  "lsp-config.json",
+  "copilot-instructions.md",
+  "instructions/**",
+  "agents/**",
+  "skills/**",
+  "hooks/**",
+  "mcp-secrets/**",
+  "mcp-oauth-config/**",
+]
+exclude = [
+  "logs/**",
+  "session-state/**",
+  "command-history-state/**",
+  "session-store.db*",
+  "installed-plugins/**",
+  "plugin-data/**",
+  "ide/**",
+]
+max_file_mb = 50
+
+[notes]
+text = "COPILOT_HOME covers ~/.copilot only; the cache is a separate platform dir moved by the cache target (COPILOT_CACHE_HOME). session-store.db is SQLite with live writers — close all sessions before moving. On Linux the CLI migrates legacy XDG config into ~/.copilot at startup when COPILOT_HOME is unset, so keep the link in place. Managed settings under Program Files, /etc or /Library/Application Support are never moved. Ships native per-OS binaries, so detection matches copilot directly, not node."

@@ -1,0 +1,52 @@
+id = "zed"
+name = "Zed"
+homepage = "https://zed.dev"
+description = "Zed editor: agent threads and editor data/config"
+
+[process]
+windows = ["Zed.exe"]
+linux = ["zed"]
+darwin = ["Zed"]
+
+[launch]
+command = "zed"
+
+[[target]]
+name = "data"
+windows = "{localappdata}/Zed"
+linux = "${XDG_DATA_HOME:-~/.local/share}/zed"
+darwin = "~/Library/Application Support/Zed"
+kind = "dir"
+
+[[target]]
+name = "config"
+windows = "{appdata}/Zed"
+linux = "${XDG_CONFIG_HOME:-~/.config}/zed"
+darwin = "~/.config/zed"
+kind = "dir"
+
+[backup]
+include = [
+  "settings.json",
+  "keymap.json",
+  "tasks.json",
+  "AGENTS.md",
+  "themes/**",
+  "snippets/**",
+  "prompts/**",
+]
+exclude = [
+  "threads/**",
+  "db/**",
+  "extensions/**",
+  "remote_extensions/**",
+  "languages/**",
+  "node/**",
+  "external_agents/**",
+  "logs/**",
+  "hang_traces/**",
+]
+max_file_mb = 50
+
+[notes]
+text = "threads/threads.db holds every agent thread and is rewritten whole on each save with no WAL and no busy timeout — moving it under a running Zed can silently drop writes, so quit Zed first. Config and data are split on every OS: macOS config is ~/.config/zed, not Application Support, and macOS ignores XDG variables. The instance socket zed-<channel>.sock lives in the data dir. Zed's own --user-data-dir moves data and config together and is the supported alternative to a link."

@@ -1,0 +1,41 @@
+id = "amp"
+name = "Amp"
+homepage = "https://ampcode.com"
+description = "Sourcegraph's Amp coding agent CLI"
+
+[process]
+windows = ["amp.exe"]
+linux = ["amp"]
+darwin = ["amp"]
+
+[launch]
+command = "amp"
+
+[[target]]
+name = "data"
+windows = "${XDG_DATA_HOME:-~/.local/share}/amp"
+linux = "${XDG_DATA_HOME:-~/.local/share}/amp"
+darwin = "${XDG_DATA_HOME:-~/.local/share}/amp"
+kind = "dir"
+
+[[target]]
+name = "config"
+windows = "${XDG_CONFIG_HOME:-~/.config}/amp"
+linux = "${XDG_CONFIG_HOME:-~/.config}/amp"
+darwin = "${XDG_CONFIG_HOME:-~/.config}/amp"
+kind = "dir"
+
+[[target]]
+name = "installer"
+windows = "${AMP_HOME:-~/.amp}"
+linux = "${AMP_HOME:-~/.amp}"
+darwin = "${AMP_HOME:-~/.amp}"
+kind = "dir"
+
+[backup]
+include = ["secrets.json", "settings.json", "settings.jsonc", "threads/**"]
+exclude = ["bin/**", "versions/**"]
+max_file_mb = 50
+
+[notes]
+text = "threads/ is a local history cache; authoritative threads live server-side, so it may lag or shrink. secrets.json plus OS-keychain entries hold auth — moving is safe but a fresh path may force re-auth. AMP_HOME moves only the installer home (bin/, versions), not data. The curl installer symlinks ~/.local/bin/amp into ~/.amp/bin; the link Midas leaves keeps that chain resolving. Native Windows paths are documented but WSL is the primary install path — verify with midas list before moving."

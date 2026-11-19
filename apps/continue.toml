@@ -1,0 +1,46 @@
+id = "continue"
+name = "Continue"
+homepage = "https://continue.dev"
+description = "Continue agent global dir (archived project, layout frozen)"
+
+[process]
+windows = ["Code.exe", "Cursor.exe", "Windsurf.exe", "VSCodium.exe"]
+linux = ["code", "cursor", "windsurf", "codium"]
+darwin = ["Code", "Cursor", "Windsurf", "VSCodium"]
+
+[launch]
+command = "cn"
+
+[[target]]
+name = "data"
+windows = "${CONTINUE_GLOBAL_DIR:-~/.continue}"
+linux = "${CONTINUE_GLOBAL_DIR:-~/.continue}"
+darwin = "${CONTINUE_GLOBAL_DIR:-~/.continue}"
+kind = "dir"
+
+[backup]
+include = [
+  "config.yaml",
+  "config.json",
+  "config.ts",
+  "auth.json",
+  "permissions.yaml",
+  "rules/**",
+  "prompts/**",
+  "agents/**",
+  "mcpServers/**",
+  "skills/**",
+  "sessions/**",
+]
+exclude = [
+  "index/**",
+  "dev_data/**",
+  "logs/**",
+  ".utils/**",
+  ".diffs/**",
+  "node_modules/**",
+]
+max_file_mb = 50
+
+[notes]
+text = "Everything lives in ~/.continue on every OS — no AppData or Library path exists. index/ holds a live LanceDB + SQLite pair: stop the editor and the cn CLI before moving, or the vector store needs a full rebuild. CONTINUE_GLOBAL_DIR is the native alternative (relative values resolve against cwd — use absolute paths). sessions/ is shared with the JetBrains plugin and cn CLI. The VS Code globalStorage/continue.continue folder holds only a small state stub. Continue is archived (final release mid-2026); the layout is frozen."

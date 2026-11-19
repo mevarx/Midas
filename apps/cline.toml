@@ -1,0 +1,34 @@
+id = "cline"
+name = "Cline"
+homepage = "https://cline.bot"
+description = "Cline agent: global state home plus legacy VS Code task store"
+
+[process]
+windows = ["Code.exe", "Cursor.exe", "Windsurf.exe", "VSCodium.exe"]
+linux = ["code", "cursor", "windsurf", "codium"]
+darwin = ["Code", "Cursor", "Windsurf", "VSCodium"]
+
+[launch]
+command = "cline"
+
+[[target]]
+name = "data"
+windows = "${CLINE_DIR:-~/.cline}"
+linux = "${CLINE_DIR:-~/.cline}"
+darwin = "${CLINE_DIR:-~/.cline}"
+kind = "dir"
+
+[[target]]
+name = "vscode-legacy"
+windows = "{appdata}/Code/User/globalStorage/saoudrizwan.claude-dev"
+linux = "{xdg_config}/Code/User/globalStorage/saoudrizwan.claude-dev"
+darwin = "~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev"
+kind = "dir"
+
+[backup]
+include = ["*.json", "*.yaml", "data/settings/**"]
+exclude = ["data/tasks/**", "data/logs/**", "worktrees/**", "tasks/**"]
+max_file_mb = 50
+
+[notes]
+text = "Cline 4.x writes to ~/.cline, shared by the IDE extension, the CLI and the JetBrains plugin; older installs also keep tasks in VS Code globalStorage (vscode-legacy target) — move both or half the space stays. Checkpoints are shadow git repos committed after every tool use and can exceed 100 GB. The same extension inside Cursor/Windsurf/VSCodium has separate globalStorage roots; add local definitions for those hosts. Detection treats any open VS Code-family editor as a potential writer: close editors before moving. CLINE_DIR/CLINE_DATA_DIR are native alternatives to a link."

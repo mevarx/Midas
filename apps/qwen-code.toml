@@ -1,0 +1,45 @@
+id = "qwen-code"
+name = "Qwen Code"
+homepage = "https://github.com/QwenLM/qwen-code"
+description = "Alibaba's Qwen terminal coding agent"
+
+[process]
+windows = ["node.exe"]
+linux = ["node"]
+darwin = ["node"]
+cmdline_contains = ["qwen"]
+
+[launch]
+command = "qwen"
+
+[[target]]
+name = "data"
+windows = "${QWEN_HOME:-~/.qwen}"
+linux = "${QWEN_HOME:-~/.qwen}"
+darwin = "${QWEN_HOME:-~/.qwen}"
+kind = "dir"
+
+[backup]
+include = [
+  "settings.json",
+  "oauth_creds.json",
+  "google_accounts.json",
+  "installation_id",
+  "QWEN.md",
+  "commands/**",
+  "skills/**",
+  "agents/**",
+  "workflows/**",
+]
+exclude = [
+  "tmp/**",
+  "projects/**",
+  "debug/**",
+  "file-history/**",
+  "bin/**",
+  "extensions/**",
+]
+max_file_mb = 50
+
+[notes]
+text = "QWEN_HOME is the final directory (unlike GEMINI_CLI_HOME, which is a parent). QWEN_RUNTIME_DIR can split projects/, tmp/ and debug/ to another location — if set, relocate that tree too. A relative QWEN_HOME resolves against the current working directory, so always use absolute paths; Qwen aborts if it resolves inside the project repo. The npm shim runs Node: detection matches node processes whose command line contains qwen."

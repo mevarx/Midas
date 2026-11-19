@@ -1,0 +1,60 @@
+id = "windsurf"
+name = "Windsurf"
+homepage = "https://windsurf.com"
+description = "Codeium's Windsurf editor (being renamed Devin Desktop)"
+
+[process]
+windows = ["Windsurf.exe", "Devin.exe"]
+linux = ["windsurf", "devin"]
+darwin = ["Windsurf", "Devin"]
+
+[launch]
+command = "windsurf"
+
+[[target]]
+name = "cascade"
+windows = "~/.codeium/windsurf"
+linux = "~/.codeium/windsurf"
+darwin = "~/.codeium/windsurf"
+kind = "dir"
+
+[[target]]
+name = "user-data"
+windows = "{appdata}/Windsurf"
+linux = "{xdg_config}/Windsurf"
+darwin = "~/Library/Application Support/Windsurf"
+kind = "dir"
+
+[[target]]
+name = "devin-user-data"
+windows = "{appdata}/Devin"
+linux = "{xdg_config}/Devin"
+darwin = "~/Library/Application Support/Devin"
+kind = "dir"
+
+[backup]
+include = [
+  "cascade/**",
+  "memories/**",
+  "global_workflows/**",
+  "skills/**",
+  "mcp_config.json",
+  "hooks.json",
+  "user_settings.pb",
+  "User/settings.json",
+  "User/keybindings.json",
+]
+exclude = [
+  "logs/**",
+  "Cache/**",
+  "Code Cache/**",
+  "GPUCache/**",
+  "CachedData/**",
+  "User/workspaceStorage/**",
+  "User/History/**",
+  "crashpad/**",
+]
+max_file_mb = 50
+
+[notes]
+text = "Windsurf is being renamed Devin Desktop: both Windsurf and Devin userData roots can exist with different content — move the one your build writes to (midas list shows sizes). Chat history is NOT in userData: it is ~/.codeium/windsurf/cascade (schema-less protobuf; a partial copy is opaque, so let Midas verify before the swap). ~/.codeium is shared with other Codeium IDE plugins; only the windsurf subfolder is moved. No vendor relocation flag exists, and an app update may recreate the old folder — re-run midas doctor afterwards."

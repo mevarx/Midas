@@ -1,0 +1,43 @@
+id = "iflow"
+name = "iFlow CLI"
+homepage = "https://github.com/iflow-ai/iflow-cli"
+description = "iFlow terminal agent (hosted service shut down 2026-04-17)"
+
+[process]
+windows = ["node.exe"]
+linux = ["node"]
+darwin = ["node"]
+cmdline_contains = ["iflow"]
+
+[launch]
+command = "iflow"
+
+[[target]]
+name = "data"
+windows = "~/.iflow"
+linux = "~/.iflow"
+darwin = "~/.iflow"
+kind = "dir"
+
+[backup]
+include = [
+  "settings.json",
+  "IFLOW.md",
+  "commands/**",
+  "agents/**",
+  "hooks/**",
+  "output-styles/**",
+  "mcp/**",
+]
+exclude = [
+  "tmp/**",
+  "snapshots/**",
+  "cache/**",
+  "session-summaries/**",
+  "metrics/**",
+  "*.log",
+]
+max_file_mb = 50
+
+[notes]
+text = "The hosted iFlow service shut down on 2026-04-17 and the repo is frozen; the layout is legacy. No home-directory env override exists. snapshots/<project> are shadow git repositories — never move them mid-checkpoint. Windows paths are inferred from the documented ~/.iflow layout (the docs are POSIX-first); verify with midas list before moving. The npm shim runs Node: detection matches node processes whose command line contains iflow."

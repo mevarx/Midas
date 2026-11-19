@@ -1,0 +1,58 @@
+id = "cursor"
+name = "Cursor"
+homepage = "https://cursor.com"
+description = "AI-native VS Code fork: editor userData plus the agent CLI tree"
+
+[process]
+windows = ["Cursor.exe"]
+linux = ["cursor"]
+darwin = ["Cursor"]
+
+[launch]
+command = "cursor"
+
+[[target]]
+name = "user-data"
+windows = "{appdata}/Cursor"
+linux = "{xdg_config}/Cursor"
+darwin = "~/Library/Application Support/Cursor"
+kind = "dir"
+
+[[target]]
+name = "cli"
+windows = "${CURSOR_DATA_DIR:-~/.cursor}"
+linux = "${CURSOR_DATA_DIR:-~/.cursor}"
+darwin = "${CURSOR_DATA_DIR:-~/.cursor}"
+kind = "dir"
+
+[[target]]
+name = "agent-stores"
+windows = "{localappdata}/Cursor/AgentStores"
+linux = "~/.local/state/cursor/agent-stores"
+kind = "dir"
+
+[backup]
+include = [
+  "User/settings.json",
+  "User/keybindings.json",
+  "User/snippets/**",
+  "User/globalStorage/storage.json",
+  "argv.json",
+  "cli-config.json",
+]
+exclude = [
+  "Cache/**",
+  "Code Cache/**",
+  "GPUCache/**",
+  "CachedData/**",
+  "CachedExtensionVSIXs/**",
+  "logs/**",
+  "Backups/**",
+  "User/workspaceStorage/**",
+  "User/History/**",
+  "sentry/**",
+]
+max_file_mb = 50
+
+[notes]
+text = "User/globalStorage/state.vscdb holds every chat and can reach tens of GB; a stale state.vscdb.backup can double the footprint. Quit Cursor completely (including agent workers and the Agents window) before moving: code.lock and the single-instance socket live in userData. Chats exist twice — the second copy is ~/.cursor/projects/*/agent-transcripts (the cli target). On Windows the AgentStores sync tree is separate (agent-stores target); on macOS it moves with user-data. Cursor's supported alternative to a link is --user-data-dir."

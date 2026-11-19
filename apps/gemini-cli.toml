@@ -1,0 +1,41 @@
+id = "gemini-cli"
+name = "Gemini CLI"
+homepage = "https://github.com/google-gemini/gemini-cli"
+description = "Google's Gemini terminal agent (folding into Antigravity CLI)"
+
+[process]
+windows = ["node.exe"]
+linux = ["node"]
+darwin = ["node"]
+cmdline_contains = ["gemini"]
+
+[launch]
+command = "gemini"
+
+[[target]]
+name = "data"
+windows = "${GEMINI_CLI_HOME:-~}/.gemini"
+linux = "${GEMINI_CLI_HOME:-~}/.gemini"
+darwin = "${GEMINI_CLI_HOME:-~}/.gemini"
+kind = "dir"
+
+[backup]
+include = [
+  "settings.json",
+  "oauth_creds.json",
+  "google_accounts.json",
+  "trustedFolders.json",
+  "projects.json",
+  "installation_id",
+  "keybindings.json",
+  "GEMINI.md",
+  "commands/**",
+  "skills/**",
+  "agents/**",
+  "policies/**",
+]
+exclude = ["tmp/**", "history/**", "bin/**", "extensions/**"]
+max_file_mb = 50
+
+[notes]
+text = "GEMINI_CLI_HOME is the PARENT of .gemini, not the directory itself. Under the macOS Seatbelt sandbox (SANDBOX=sandbox-exec) runtime data lives in ~/.cache/.gemini instead — relocate that too if you use sandbox mode. System settings (/etc/gemini-cli, C:\\ProgramData\\gemini-cli, /Library/Application Support/GeminiCli) are machine-wide and never moved. Google is folding Gemini CLI into Antigravity CLI, so this layout is frozen. The npm shim runs Node: detection matches node processes whose command line contains gemini."

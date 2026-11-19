@@ -1,0 +1,28 @@
+id = "aider"
+name = "Aider"
+homepage = "https://aider.chat"
+description = "Open-source AI pair programming in the terminal"
+
+[process]
+windows = ["aider.exe", "python.exe"]
+linux = ["aider", "python3", "python"]
+darwin = ["aider", "python3", "python"]
+cmdline_contains = ["aider"]
+
+[launch]
+command = "aider"
+
+[[target]]
+name = "data"
+windows = "~/.aider"
+linux = "~/.aider"
+darwin = "~/.aider"
+kind = "dir"
+
+[backup]
+include = ["oauth-keys.env", "*.json"]
+exclude = ["caches/**"]
+max_file_mb = 25
+
+[notes]
+text = "Most Aider growth is per-repository (.aider.tags.cache.v4/, .aider.chat.history.md, .aider.input.history at the repo root), not in ~/.aider — moving this folder reclaims little. The global config ~/.aider.conf.yml is a file and is left alone. To relocate a repo's Aider dotfiles, add a local definition pointing at that repo (midas apps path). Installed via pipx/pip: detection matches the aider launcher or a python process whose command line contains aider."

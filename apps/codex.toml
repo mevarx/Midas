@@ -1,0 +1,35 @@
+id = "codex"
+name = "OpenAI Codex CLI"
+homepage = "https://github.com/openai/codex"
+description = "OpenAI's agentic coding CLI"
+
+[process]
+windows = ["codex.exe"]
+linux = ["codex"]
+darwin = ["codex"]
+
+[launch]
+command = "codex"
+
+[[target]]
+name = "data"
+windows = "${CODEX_HOME:-~/.codex}"
+linux = "${CODEX_HOME:-~/.codex}"
+darwin = "${CODEX_HOME:-~/.codex}"
+kind = "dir"
+
+[backup]
+include = ["config.toml", "auth.json", "*.md", "prompts/**", "skills/**"]
+exclude = [
+  "sessions/**",
+  "archived_sessions/**",
+  "log/**",
+  "shell_snapshots/**",
+  ".tmp/**",
+  "*.sqlite*",
+  "history.jsonl",
+]
+max_file_mb = 50
+
+[notes]
+text = "CODEX_HOME replaces ~/.codex but must already exist; Midas moves the directory it points at. config.toml can pin log_dir/sqlite_home outside CODEX_HOME — check it before moving. SQLite state/log databases and rollout transcripts are live while Codex runs: close all sessions first. On macOS the Seatbelt sandbox rejects a symlinked CODEX_HOME unless allow_symlinked_codex_home = true is set in config.toml."

@@ -1,0 +1,47 @@
+id = "goose"
+name = "Goose"
+homepage = "https://block.github.io/goose/"
+description = "Block's open-source AI agent (CLI)"
+
+[process]
+windows = ["goose.exe", "goosed.exe", "Goose.exe"]
+linux = ["goose", "goosed"]
+darwin = ["goose", "goosed", "Goose"]
+
+[launch]
+command = "goose"
+
+[[target]]
+name = "config"
+windows = "{appdata}/Block/goose/config"
+linux = "{xdg_config}/goose"
+darwin = "~/.config/goose"
+kind = "dir"
+
+[[target]]
+name = "data"
+windows = "{appdata}/Block/goose/data"
+linux = "{xdg_data}/goose"
+darwin = "~/.local/share/goose"
+kind = "dir"
+
+[[target]]
+name = "state"
+linux = "{xdg_state}/goose"
+darwin = "~/.local/state/goose"
+kind = "dir"
+
+[[target]]
+name = "cache"
+windows = "{localappdata}/Block/goose/cache"
+linux = "{xdg_cache}/goose"
+darwin = "~/.cache/goose"
+kind = "dir"
+
+[backup]
+include = ["config.yaml", "permission.yaml", "secrets.yaml", "prompts/**", "permissions/**"]
+exclude = ["sessions/**", "logs/**", "history.txt"]
+max_file_mb = 50
+
+[notes]
+text = "The CLI uses XDG-style dirs on macOS/Linux and %APPDATA%\\Block\\goose on Windows; ~/Library/Application Support/Goose belongs to the desktop app, not the CLI. On Windows the state dir falls back into data, so there is no separate state target. GOOSE_PATH_ROOT relocates config/data/state under one root with a different shape — if you set it, write a local override definition (midas apps path). sessions/sessions.db is SQLite in WAL mode: stop goose and goosed before moving. Secrets normally live in the OS keyring, not on disk."

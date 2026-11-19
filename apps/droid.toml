@@ -1,0 +1,44 @@
+id = "droid"
+name = "Factory Droid"
+homepage = "https://factory.ai"
+description = "Factory's Droid CLI agent"
+
+[process]
+windows = ["droid.exe"]
+linux = ["droid"]
+darwin = ["droid"]
+
+[launch]
+command = "droid"
+
+[[target]]
+name = "data"
+windows = "~/.factory"
+linux = "~/.factory"
+darwin = "~/.factory"
+kind = "dir"
+
+[backup]
+include = [
+  "settings.json",
+  "settings.local.json",
+  "mcp.json",
+  "hooks.json",
+  "auth.v2.file",
+  "skills/**",
+  "plugins/**",
+]
+exclude = [
+  "sessions/**",
+  "logs/**",
+  "cache/**",
+  "snapshots/**",
+  "worktrees/**",
+  "updates/**",
+  "temp/**",
+  "repl-runs/**",
+]
+max_file_mb = 50
+
+[notes]
+text = "Everything lives in ~/.factory on every OS — no AppData or Library path exists. auth.v2.file is encrypted with a key in the OS keyring: moving is safe, copying to another machine is not. Stop droid and its daemon before moving (SQLite session index plus many JSONL transcripts). worktrees/ can hold full git checkouts and updates/ stages binaries. FACTORY_HOME_OVERRIDE exists in the shipped binary but is undocumented; if you use it, add a local override definition."
