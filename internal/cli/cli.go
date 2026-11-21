@@ -73,11 +73,6 @@ func failf(code int, format string, a ...any) error {
 	return &codedError{code: code, err: fmt.Errorf(format, a...)}
 }
 
-// Run executes the CLI and returns the process exit code.
-func Run(args []string) int {
-	return RunContext(args, context.Background())
-}
-
 // RunContext executes the CLI with cancellation tied to the calling process.
 func RunContext(args []string, runContext context.Context) int {
 	g, rest, err := parseGlobal(args)

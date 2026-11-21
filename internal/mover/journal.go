@@ -219,18 +219,6 @@ func RemoveJournal(vault, app, target string) error {
 	return err
 }
 
-// ListJournals returns every journal in the vault.
-func ListJournals(vault string) ([]*Journal, error) {
-	journals, issues, err := ScanJournals(vault)
-	if err != nil {
-		return journals, err
-	}
-	if len(issues) > 0 {
-		return journals, fmt.Errorf("%d invalid journal file(s): %s", len(issues), strings.Join(issues, ", "))
-	}
-	return journals, nil
-}
-
 // ScanJournals returns valid journals and paths that must be preserved for
 // diagnosis instead of silently skipping malformed metadata.
 func ScanJournals(vault string) ([]*Journal, []string, error) {
