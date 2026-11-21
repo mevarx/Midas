@@ -20,5 +20,5 @@ No actionable critical issue was identified in this scoped source review.
 Known residual risks include filesystem TOCTOU windows, hardware failure,
 external volume loss, untested third-party filesystems, and native CI results
 that have not yet completed for the release commit. Resolve those qualification
-gates before publishing v1.0; do not treat this record as release sign-off by
+gates before publishing a release; do not treat this record as release sign-off by
 itself.

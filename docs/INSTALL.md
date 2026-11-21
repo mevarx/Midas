@@ -1,7 +1,7 @@
 # Install, upgrade, and uninstall
 
 Midas does not install or update itself. Download only from the repository's
-GitHub Releases page or build it with Go 1.26 or newer.
+GitHub Releases page or build it with Go 1.26.5 or newer.
 
 ## Release binary
 

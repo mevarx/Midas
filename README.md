@@ -27,7 +27,7 @@ See [docs/SAFETY.md](docs/SAFETY.md) for the full guarantee list and [docs/RECOV
 
 ## Install
 
-From source (Go 1.26+):
+From source (Go 1.26.5+):
 
 ```
 go install github.com/mevarx/Midas/cmd/midas@latest

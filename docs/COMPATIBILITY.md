@@ -6,7 +6,7 @@ release checks complete.
 
 ## App coverage
 
-19 built-in app definitions ship as of 1.2.0. Every default path is
+19 built-in app definitions ship. Every default path is
 researched against vendor docs or path-resolution source code and pinned by
 golden tests (`TestBuiltinGoldenPaths`) that expand each target for
 Windows, macOS and Linux from any host. The evidence, popularity data and
@@ -54,7 +54,10 @@ Coverage rules:
 - Ubuntu LTS, amd64 and arm64; directory symlinks are used.
 - macOS 15, amd64 and arm64; directory symlinks are used. Native CI runs on
   both architectures before the release job may publish.
-- Go 1.26 or newer is required to build from source. Release binaries target
+- Go 1.26.5 or newer is required to build from source: that patch release
+  fixes GO-2026-4602 (`os.ReadDir` FileInfo escaping a Root), which
+  govulncheck reports as reachable through link health checks. Release
+  binaries target
   Windows, Linux, and macOS on amd64 and arm64.
 - Network filesystems and non-native WSL paths are unsupported. Filesystem,
   privacy, permission, and volume behavior may limit individual operations.
@@ -86,8 +89,8 @@ supported after a format migration unless a release note explicitly says so.
 
 ## Versioning and upgrades
 
-After v1.0, Midas follows Semantic Versioning: breaking CLI, config, manifest,
+Midas follows Semantic Versioning: breaking CLI, config, manifest,
 backup, journal, or JSON changes require a major version; compatible additions
 are minor; compatible fixes are patch releases. Release notes identify upgrade
-and recovery effects. Until v1.0 is tagged, format and CLI changes may still
-occur; preserve the vault and backups before upgrading.
+and recovery effects. While the major version is 0, format and CLI changes may
+still occur; preserve the vault and backups before upgrading.

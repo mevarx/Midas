@@ -4,140 +4,79 @@ Changes that affect behavior, compatibility, data safety, or recovery are
 recorded here. Release notes are generated from the changelog and reviewed
 before publication.
 
-## 1.0.1
+## 0.1.0
 
-- Fix Windows backup creation rejecting sources with subdirectories: rel
-  paths are stored slash-separated on every platform, so nested app data is
-  backed up and verified instead of aborting the move.
-- Fix rollback from a backup set failing on Linux and macOS: staging now
-  copies with writable modes and applies the original per-file modes
-  recorded in BACKUP.json, so protected read-only sets can restore data
-  after total loss instead of aborting mid-copy.
-- Add dedicated move/restore/rollback lifecycle tests with failure injection
-  and interruption recovery; supersede the combined ownership-file coverage.
-- Add native Windows tests for paths beyond the 260-character boundary:
-  junction create/read/resolve/remove plus end-to-end move, restore, and
-  rollback; docs/DECISIONS.md records the verified state.
-- Add an automated release qualification gate (`scripts/release_gate.py`) to
-  the release workflow; GoReleaser publication is blocked while any
-  qualification item is unmet (docs/RELEASE.md).
-- Repair the published v1.0.0 release: the six platform archives and
-  checksums.txt are attached and their public download links verified.
+First public release.
 
-## 1.1.0
+### What Midas does
 
-- Require Go 1.26.5 or newer for builds. That patch release contains the fix
-  for GO-2026-4602 (`os.ReadDir` FileInfo escaping a Root), which govulncheck
-  reports as reachable through link health checks. Release binaries and CI now
-  use the patched toolchain.
-- Rename the Go module to `github.com/mevarx/Midas` so
-  `go install github.com/mevarx/Midas/cmd/midas@latest` resolves; the previous
-  path returned 404. Imports, linker flags, and install docs are updated.
-- Fix Unix moves, restores, and rollbacks of trees containing read-only
-  directories: staged copies are created writable, verified, and then given
-  their original modes before the commit rename. Owned-path cleanup clears
-  read-only modes bottom-up without following links, so `.midas-bak` and
-  partial trees can be removed.
-- Add a regression test proving `directChild` rejects nested paths on every
-  platform (Windows `filepath.Rel` returns backslashes).
-- On Windows, query reparse points only for irregular entries, avoiding two
-  filesystem calls for every regular file and directory during tree walks.
-- Remove provably unused code (`copyPool.addFile`, `jsonMarshal`, `u16ptr`,
-  and unused force option fields/parameters) and use `maps.Equal` for tree
-  snapshots.
-- Restore the documented `<N>d` backup-retention sweep in `midas status`, now
-  performed under the vault lock; the status row in COMMANDS.md says so.
-- Pool the 1 MiB copy and hash buffers and verify file hashes in parallel
-  with the existing bounded copy-worker count, keeping the problem list
-  deterministic. Add a hash-verification benchmark.
-- Update BurntSushi/toml to v1.6.0, gopsutil/v4 to v4.26.10, and
-  golang.org/x/sys to v0.50.0; tidy the module graph.
-- CI runs `go test -race` on Ubuntu and macOS, adds pinned staticcheck and
-  govulncheck steps, and enables weekly Dependabot updates for Go modules and
-  GitHub Actions.
-- Treat post-commit ownership-marker cleanup failures as warnings instead of
-  rolling back committed, verified data; `doctor --repair` removes stale
-  markers for known targets after revalidation.
-- Delete `<vault>/.midas/logs/*.log` files older than 30 days on a best-effort
-  basis once per run; documented in CONFIGURATION.md.
-- fsync the parent directory after atomic journal, manifest, and BACKUP.json
-  renames on Unix so metadata survives a crash immediately after the write.
-  The step is a documented no-op on Windows.
-- Document known limitations: hard links are duplicated by copies, cloud-synced
-  placeholder folders are unsupported/risky, and legacy backup sets lack
-  directory metadata.
-- Let read-only commands (`status`, `list`, `plan`, `analyze`, and `doctor`
-  without `--repair`) inspect a read-only vault. Mutating commands keep the
-  writability check and exit 5.
-- Fix `HealthCheck` to check the byte read through the link, descend when no
-  top-level file exists, and reuse a single directory listing. An unreadable
-  file through the link now reports it unhealthy instead of silently passing.
-- Record directory paths, modes, and timestamps in BACKUP.json (additive
-  `dirs` within schema 1, including empty directories) and restore them
-  bottom-up. Older sets still restore and report that directory metadata was
-  not recorded.
-- Re-run the app-running check immediately before swapping the original
-  aside and immediately before deleting `.midas-bak`; a detection aborts into
-  the existing rollback path. `docs/SAFETY.md` documents the residual
-  point-in-time race window.
-- Serialize mutating commands with an advisory vault lock
-  (`<vault>/.midas/LOCK`, flock on Unix and LockFileEx on Windows) and create
-  new operation journals with O_EXCL, so concurrent Midas processes fail
-  cleanly instead of racing on the same paths. Doctor reports a live lock
-  holder.
-- Preserve directory modification times on copies by applying them bottom-up
-  after all children are written; the previous early timestamp call was
-  always overwritten by child writes.
-- Detect case collisions for directories and links as well as regular files,
-  so trees that would silently merge on case-insensitive filesystems abort
-  before commit. The copy error now states that the original is untouched and
-  any partial copy is preserved.
-- Verify each backup source file did not change during its copy (same file,
-  size, modification time, and byte count). A torn backup set is discarded
-  instead of being marked verified.
-- Add bounded opt-in copy workers, reproducible copy/backup benchmarks, and
-  separate verification progress.
-- Add read-only `midas plan` / `midas analyze`, four shell completion scripts,
-  and schema-versioned JSON and error output.
-- Add configuration schema versioning, compatibility/security/support policies,
-  and release artifact verification.
-- Keep sequential copying as the default; benchmark results are hardware and
-  filesystem specific.
+Midas moves the heavy data folders of AI coding tools off a small system
+drive onto another drive or mount point, leaving a link behind so the tools
+never notice. Every move follows one pipeline: verified safety backup,
+verified copy (or same-volume rename), swap the original aside, create the
+link, live health check, record the manifest. Any failure rolls back to the
+untouched original.
 
-## 1.2.0
+### Coverage
 
-- Expand the built-in registry from 3 to 19 apps: add Codex CLI, Gemini CLI,
-  GitHub Copilot CLI, Qwen Code, iFlow CLI, Aider, Goose, Crush, Amp,
-  Factory Droid, Cursor, Windsurf/Devin Desktop, Zed, Cline, Roo Code and
-  Continue. Defaults, relocation overrides and per-OS caveats are researched
-  against vendor docs and path-resolution source code; the evidence and
-  popularity data are recorded in docs/RESEARCH.md.
-- Fix OpenCode defaults on Windows and macOS: OpenCode uses raw XDG paths on
-  every OS (`%USERPROFILE%\.local\share\opencode`, `~/.local/share/opencode`),
-  not AppData or Library/Application Support. Moves now target the directories
-  the tool actually reads.
-- Fix the Hermes Windows default: `%LOCALAPPDATA%\hermes`, not `~/.hermes`,
-  and honour `HERMES_HOME` on every OS.
-- Honour `CLAUDE_CONFIG_DIR` for Claude Code, including the documented
-  behaviour that `.claude.json` moves inside the overridden directory.
-- Path expansion supports `${VAR:-default}` fallbacks. A referenced variable
-  that is unset or empty without a default is now a hard error instead of a
-  silently empty path segment.
-- Built-in definitions honour documented relocation overrides when set:
-  `CODEX_HOME`, `GEMINI_CLI_HOME` (parent semantics), `COPILOT_HOME`,
+- 19 built-in app definitions: Claude Code, OpenCode, Hermes, Codex CLI,
+  Gemini CLI, GitHub Copilot CLI, Qwen Code, iFlow CLI, Aider, Goose, Crush,
+  Amp, Factory Droid, Cursor, Windsurf/Devin Desktop, Zed, Cline, Roo Code
+  and Continue.
+- Defaults researched against vendor docs and path-resolution source code
+  on Windows, macOS and Linux; the evidence and popularity data live in
+  docs/RESEARCH.md.
+- Documented relocation overrides are honoured when set (`CODEX_HOME`,
+  `CLAUDE_CONFIG_DIR`, `HERMES_HOME`, `GEMINI_CLI_HOME`, `COPILOT_HOME`,
   `COPILOT_CACHE_HOME`, `QWEN_HOME`, `CRUSH_GLOBAL_CONFIG`,
   `CRUSH_GLOBAL_DATA`, `CRUSH_CACHE_DIR`, `AMP_HOME`, `CURSOR_DATA_DIR`,
-  `CLINE_DIR`, `CONTINUE_GLOBAL_DIR` and `XDG_*`. Split stores ship as
-  separate targets (Copilot data+cache, Cursor userData+CLI+sync stores,
-  Zed data+config, Cline home+legacy store, Windsurf cascade+both userData
-  roots) so a move never silently leaves half the data behind.
-- Add golden registry tests: every built-in target is pinned per OS from any
-  host (`TestBuiltinGoldenPaths`), every override is proven to redirect
-  expansion (`TestBuiltinEnvOverrides`), and host containment is validated
-  for all definitions. New built-ins must add golden entries and research
-  citations.
-- `midas list` works before `midas init`: discovery mode lists installed apps
-  with a warning instead of a usage error. A configured but unreachable vault
-  remains a hard exit-5 error.
-- Pin LF line endings with `.gitattributes` so gofmt and byte-sensitive
-  tooling behave identically on Windows, macOS and Linux checkouts.
+  `CLINE_DIR`, `CONTINUE_GLOBAL_DIR`, `XDG_*`) via `${VAR:-default}` path
+  expansion. A referenced variable that is unset or empty without a default
+  is a hard error, never a silently empty path segment.
+- Split stores ship as separate targets (Copilot data+cache, Cursor
+  userData+CLI+sync stores, Zed data+config, Cline home+legacy store,
+  Windsurf cascade+both userData roots) so a move never silently leaves
+  half the data behind.
+- Local TOML definitions override built-ins by id; no Go code needed.
+
+### Safety and recovery
+
+- Windows directory junctions (no admin required); macOS/Linux symlinks.
+  Links are recreated, never followed; copies and deletions use Lstat
+  semantics.
+- Backup modes full/essential/none; essential copies only the files a
+  definition marks important. Verification by size or SHA-256. Backup sets
+  are protected against deletion while creating, verified or in use.
+- `midas rollback` undoes a failed or interrupted move; `midas resume`
+  restarts a validated interrupted copy; `midas restore` moves data back
+  after a successful move; `midas doctor` finds and explicitly repairs
+  problems.
+- Advisory vault lock serializes mutating commands; operation journals are
+  created with O_EXCL and fsynced with their parent directories on Unix.
+- App-running checks re-run immediately before the swap and before deleting
+  the original; case collisions abort before commit; torn backups are
+  discarded instead of marked verified.
+- Unreachable vaults fail loudly (exit code 5); `run` never silently falls
+  back to the system temp directory without `--allow-fallback`.
+
+### Usability
+
+- `midas list` works before `init` (discovery mode); a configured but
+  unreachable vault remains a hard error.
+- Read-only `plan` and `analyze`, schema-versioned JSON output, stable exit
+  codes, Bash/Zsh/Fish/PowerShell completions, launch shims, bounded opt-in
+  copy workers, config schema versioning.
+
+### Quality gates
+
+- Golden registry tests pin every built-in target per OS from any host;
+  every override is proven to redirect expansion; host containment is
+  validated for all definitions.
+- CI matrix on Windows, Ubuntu and both macOS architectures with `-race`,
+  staticcheck, govulncheck, six-target cross-compilation and completion
+  parsing; tag-triggered release qualification gate blocks publication
+  while any item is unmet.
+- Build identity is derived from the git tag (GoReleaser ldflags) or
+  embedded build info; no release number is hardcoded in the repository.
+- LF line endings pinned via `.gitattributes` for identical tooling
+  behavior on every platform.

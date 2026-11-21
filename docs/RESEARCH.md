@@ -232,8 +232,9 @@ On Windows that is `%USERPROFILE%\.local\share\opencode` — **not**
 `~/Library/Application Support`[30][31]. Sessions live in one SQLite DB
 (`opencode.db` + WAL sidecars); `snapshot/` and `repos/` hold git trees that
 can grow to many GB; advisory locks live under the state dir, so data and
-state must move together[30][31]. (Midas ≤1.1.0 shipped the wrong
-Windows/macOS defaults for this app; fixed in 1.2.0.)
+state must move together[30][31]. (Earlier Midas definitions shipped the
+wrong Windows/macOS defaults for this app; the current registry corrects
+them.)
 
 ## 3. IDE harnesses
 

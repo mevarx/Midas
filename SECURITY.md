@@ -15,7 +15,7 @@ credentials, personal file contents, or backup archives in a report.
 Include affected version/commit, platform/filesystem, a concise impact
 description, safe reproduction steps using disposable temporary data, and any
 known mitigation. Maintainers will acknowledge reports and coordinate a fix
-and disclosure timeline; no response-time guarantee is made before v1.0.
+and disclosure timeline; no response-time guarantee is made.
 
 ## Scope
 

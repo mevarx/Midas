@@ -6,7 +6,7 @@ to the workflow's exact commit, runs the same format/dependency/vet/test/build
 checks as PR CI, builds all six OS/architecture artifacts, inspects archive
 contents, verifies checksums, and smoke-tests the Linux amd64 version output
 and executable replacement. Previous-release metadata upgrade coverage
-remains a separate v1.0 qualification gate.
+remains a separate qualification gate.
 GoReleaser publication depends on all these jobs passing for the tagged commit.
 
 Before tagging, the automated release gate (`scripts/release_gate.py`, run by
@@ -21,7 +21,7 @@ checkboxes are standing qualifications re-verified by the gate and the release
 workflow on every tag; a new critical data-loss or security finding means the
 affected item is unchecked until it is resolved.
 
-Before tagging v1.0, maintainers must additionally confirm:
+Before tagging a release, maintainers must additionally confirm:
 
 - [x] native Windows, Linux, and macOS tests pass on the release commit, with both
   macOS architectures qualified;
